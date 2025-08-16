@@ -4,7 +4,8 @@
       "WebFetch(domain:developer.android.com)",
       "WebSearch",
       "WebFetch(domain:ai.google.dev)",
-      "WebFetch(domain:developers.kakao.com)"
+      "WebFetch(domain:developers.kakao.com)",
+      "Bash(git add:*)"
     ],
     "defaultMode": "acceptEdits"
   }
