@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:developer.android.com)",
+      "WebSearch",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:developers.kakao.com)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}
