@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.kakaomiddleware.ui.theme.KakaoMiddlewareTheme
@@ -68,12 +67,10 @@ fun KakaoMessageLogger(
         
         Button(
             onClick = onOpenSettings,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(bottom = 16.dp)
         ) {
             Text("Enable Notification Access")
         }
-        
-        ApiKeySection(modifier = Modifier.padding(bottom = 16.dp))
         
         if (notifications.isEmpty()) {
             Text(
@@ -97,85 +94,6 @@ fun KakaoMessageLogger(
     }
 }
 
-@Composable
-fun ApiKeySection(modifier: Modifier = Modifier) {
-    var apiKey by remember { mutableStateOf("") }
-    var isExpanded by remember { mutableStateOf(false) }
-    
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "🤖 Gemini API Configuration",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                TextButton(onClick = { isExpanded = !isExpanded }) {
-                    Text(if (isExpanded) "Hide" else "Setup")
-                }
-            }
-            
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
-                    label = { Text("Gemini API Key") },
-                    placeholder = { Text("Enter your API key here") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = if (ApiKeyManager.isApiKeySet()) "✅ API Key Set" else "❌ API Key Required",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (ApiKeyManager.isApiKeySet()) 
-                            MaterialTheme.colorScheme.primary 
-                        else 
-                            MaterialTheme.colorScheme.error
-                    )
-                    
-                    Button(
-                        onClick = {
-                            if (apiKey.isNotBlank()) {
-                                ApiKeyManager.setApiKey(apiKey)
-                                apiKey = ""
-                                isExpanded = false
-                            }
-                        },
-                        enabled = apiKey.isNotBlank()
-                    ) {
-                        Text("Save")
-                    }
-                }
-                
-                Text(
-                    text = "Get your free API key at https://aistudio.google.com/app/apikey",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-        }
-    }
-}
 
 @Composable
 fun NotificationItem(notification: KakaoNotification) {

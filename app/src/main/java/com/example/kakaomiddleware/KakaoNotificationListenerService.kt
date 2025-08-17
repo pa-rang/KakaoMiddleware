@@ -14,14 +14,14 @@ class KakaoNotificationListenerService : NotificationListenerService() {
         val notificationLog = mutableListOf<KakaoNotification>()
     }
     
-    private lateinit var gptRequestQueue: GptRequestQueue
+    private lateinit var serverRequestQueue: ServerRequestQueue
     private lateinit var remoteInputHijacker: RemoteInputHijacker
     
     override fun onListenerConnected() {
         super.onListenerConnected()
-        gptRequestQueue = GptRequestQueue(this)
+        serverRequestQueue = ServerRequestQueue(this)
         remoteInputHijacker = RemoteInputHijacker(this)
-        Log.d(TAG, "NotificationListener connected and hijacking system initialized")
+        Log.i(TAG, "NotificationListener connected")
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -71,42 +71,35 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                     
                     when (notif) {
                         is GroupMessage -> {
-                            Log.d(TAG, "Group message - Group: ${notif.groupName}, Sender: ${notif.sender}, Message: ${notif.message}")
+                            Log.d(TAG, "Group message: ${notif.groupName} - ${notif.sender}")
                             
-                            // Check for GPT trigger and process if needed
-                            if (::gptRequestQueue.isInitialized && notif.message.contains("@GPT_call_it", ignoreCase = true)) {
-                                Log.d(TAG, "GPT trigger detected in group message, adding to queue")
-                                gptRequestQueue.addRequest(
+                            // Send ALL group messages to server for processing
+                            if (::serverRequestQueue.isInitialized) {
+                                serverRequestQueue.addRequest(
                                     originalSbn = sbn,
-                                    originalMessage = notif.message,
+                                    message = notif.message,
                                     sender = notif.sender,
-                                    groupName = notif.groupName
+                                    groupName = notif.groupName,
+                                    isGroup = true
                                 )
                             }
                         }
                         is PersonalMessage -> {
-                            Log.d(TAG, "Personal message - Sender: ${notif.sender}, Message: ${notif.message}")
+                            Log.d(TAG, "Personal message: ${notif.sender}")
                             
-                            // Check for GPT trigger and process if needed
-                            if (::gptRequestQueue.isInitialized && notif.message.contains("@GPT_call_it", ignoreCase = true)) {
-                                Log.d(TAG, "GPT trigger detected in personal message, adding to queue")
-                                gptRequestQueue.addRequest(
+                            // Send ALL personal messages to server for processing
+                            if (::serverRequestQueue.isInitialized) {
+                                serverRequestQueue.addRequest(
                                     originalSbn = sbn,
-                                    originalMessage = notif.message,
+                                    message = notif.message,
                                     sender = notif.sender,
-                                    groupName = null
+                                    groupName = null,
+                                    isGroup = false
                                 )
                             }
                         }
                         is UnreadSummary -> Log.d(TAG, "Unread summary - Info: ${notif.unreadInfo}")
                     }
-                    
-                    // Debug: Log hijacking capabilities for this notification
-                    if (::remoteInputHijacker.isInitialized && (notif is GroupMessage || notif is PersonalMessage)) {
-                        val debugInfo = remoteInputHijacker.getHijackingDebugInfo(sbn)
-                        Log.d(TAG, "Hijacking debug info: $debugInfo")
-                    }
-                    
                 } ?: Log.d(TAG, "Unknown notification type ignored")
             }
         }
@@ -118,10 +111,10 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
-        if (::gptRequestQueue.isInitialized) {
-            gptRequestQueue.shutdown()
+        if (::serverRequestQueue.isInitialized) {
+            serverRequestQueue.shutdown()
         }
-        Log.d(TAG, "NotificationListener disconnected and cleaned up")
+        Log.i(TAG, "NotificationListener disconnected")
     }
 }
 

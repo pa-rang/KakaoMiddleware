@@ -1,11 +1,11 @@
 # KakaoMiddleware - KakaoTalk AI Reply System
 
 ## Project Overview
-KakaoMiddleware is an Android application that intercepts KakaoTalk notifications and provides AI-powered automatic replies. The system detects "@GPT_call_it" triggers in messages and responds using Google's Gemini API through background RemoteInput hijacking.
+KakaoMiddleware is an Android application that intercepts KakaoTalk notifications and provides server-mediated automatic replies. The system sends ALL KakaoTalk messages to a custom server API and handles responses through background RemoteInput hijacking.
 
-## Project Status: Phase 1 Complete ✅
-**Current State**: Basic message logging and classification  
-**Next Phase**: RemoteInput hijacking for AI reply functionality
+## Project Status: Phase 2.1 Complete ✅
+**Current State**: Server-based middleware with RemoteInput hijacking  
+**Architecture**: Simplified pipeline sending ALL messages to server API
 
 ## Architecture
 
@@ -17,11 +17,30 @@ KakaoMiddleware is an Android application that intercepts KakaoTalk notification
 - **Key Features**:
   - Filters notifications from `com.kakao.talk` package
   - Analyzes notification extras to determine message type
-  - Stores notifications in static list for UI access
+  - Sends ALL messages to server via ServerRequestQueue
+  - Integrated RemoteInput hijacking for invisible replies
 
-#### 2. MainActivity
+#### 2. ServerRequestQueue
+- **Location**: `app/src/main/java/com/example/kakaomiddleware/GptRequestQueue.kt`
+- **Purpose**: Asynchronous server request processing with high concurrency
+- **Key Features**:
+  - 100 concurrent request limit for optimal performance
+  - Queue-based processing system
+  - Processes ALL messages (no trigger detection)
+  - RemoteInput hijacking for server responses
+
+#### 3. ServerApiService
+- **Location**: `app/src/main/java/com/example/kakaomiddleware/ServerApiService.kt`
+- **Purpose**: HTTP client for custom server API communication
+- **Key Features**:
+  - OkHttp-based REST client
+  - Endpoint: https://kakaobot-server.vercel.app/api/v1/process-message
+  - Robust error handling and timeout management
+  - JSON payload creation and response parsing
+
+#### 4. MainActivity
 - **Location**: `app/src/main/java/com/example/kakaomiddleware/MainActivity.kt`
-- **Purpose**: Main UI displaying logged notifications
+- **Purpose**: Simplified UI displaying logged notifications
 - **Key Features**:
   - Real-time notification display with 1-second refresh
   - Button to open notification access settings
