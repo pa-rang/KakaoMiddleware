@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        allowlistManager = AllowlistManager(this)
+        allowlistManager = AllowlistManager.getInstance(this)
         enableEdgeToEdge()
         setContent {
             KakaoMiddlewareTheme {
