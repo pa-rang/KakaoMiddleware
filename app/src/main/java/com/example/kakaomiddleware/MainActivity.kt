@@ -9,25 +9,37 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.StateFlow
 import com.example.kakaomiddleware.ui.theme.KakaoMiddlewareTheme
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
+    private lateinit var allowlistManager: AllowlistManager
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        allowlistManager = AllowlistManager(this)
         enableEdgeToEdge()
         setContent {
             KakaoMiddlewareTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    KakaoMessageLogger(
+                    MainScreen(
                         modifier = Modifier.padding(innerPadding),
+                        allowlistManager = allowlistManager,
                         onOpenSettings = {
                             val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                             startActivity(intent)
@@ -35,6 +47,39 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun MainScreen(
+    modifier: Modifier = Modifier,
+    allowlistManager: AllowlistManager,
+    onOpenSettings: () -> Unit
+) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = listOf("Messages", "Allowlist")
+    
+    Column(modifier = modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = selectedTab) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = { Text(title) }
+                )
+            }
+        }
+        
+        when (selectedTab) {
+            0 -> KakaoMessageLogger(
+                modifier = Modifier.fillMaxSize(),
+                onOpenSettings = onOpenSettings
+            )
+            1 -> AllowlistScreen(
+                modifier = Modifier.fillMaxSize(),
+                allowlistManager = allowlistManager
+            )
         }
     }
 }
@@ -157,6 +202,151 @@ fun NotificationItem(notification: KakaoNotification) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )
+        }
+    }
+}
+
+@Composable
+fun AllowlistScreen(
+    modifier: Modifier = Modifier,
+    allowlistManager: AllowlistManager
+) {
+    val personalAllowlist by allowlistManager.personalAllowlist.collectAsState()
+    val groupAllowlist by allowlistManager.groupAllowlist.collectAsState()
+    
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Reply Allowlist",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        Text(
+            text = "Only messages from these contacts/groups will be sent to the server for AI replies.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+        
+        AllowlistSection(
+            title = "Personal Contacts",
+            items = personalAllowlist,
+            onAddItem = { allowlistManager.addPersonalContact(it) },
+            onRemoveItem = { allowlistManager.removePersonalContact(it) },
+            placeholder = "Enter contact name"
+        )
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        AllowlistSection(
+            title = "Group Chats",
+            items = groupAllowlist,
+            onAddItem = { allowlistManager.addGroupName(it) },
+            onRemoveItem = { allowlistManager.removeGroupName(it) },
+            placeholder = "Enter group name"
+        )
+    }
+}
+
+@Composable
+fun AllowlistSection(
+    title: String,
+    items: Set<String>,
+    onAddItem: (String) -> Unit,
+    onRemoveItem: (String) -> Unit,
+    placeholder: String
+) {
+    var newItemText by remember { mutableStateOf("") }
+    
+    Column {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = newItemText,
+                onValueChange = { newItemText = it },
+                placeholder = { Text(placeholder) },
+                modifier = Modifier.weight(1f),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (newItemText.isNotBlank()) {
+                            onAddItem(newItemText)
+                            newItemText = ""
+                        }
+                    }
+                ),
+                singleLine = true
+            )
+            
+            IconButton(
+                onClick = {
+                    if (newItemText.isNotBlank()) {
+                        onAddItem(newItemText)
+                        newItemText = ""
+                    }
+                }
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add")
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        if (items.isEmpty()) {
+            Text(
+                text = "No items added yet",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(8.dp)
+            )
+        } else {
+            LazyColumn {
+                items(items.toList()) { item ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = item,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { onRemoveItem(item) }
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Remove",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

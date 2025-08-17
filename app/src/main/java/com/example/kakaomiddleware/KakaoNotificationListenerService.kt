@@ -16,11 +16,13 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     
     private lateinit var serverRequestQueue: ServerRequestQueue
     private lateinit var remoteInputHijacker: RemoteInputHijacker
+    private lateinit var allowlistManager: AllowlistManager
     
     override fun onListenerConnected() {
         super.onListenerConnected()
         serverRequestQueue = ServerRequestQueue(this)
         remoteInputHijacker = RemoteInputHijacker(this)
+        allowlistManager = AllowlistManager(this)
         Log.i(TAG, "NotificationListener connected")
     }
 
@@ -73,29 +75,39 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         is GroupMessage -> {
                             Log.d(TAG, "Group message: ${notif.groupName} - ${notif.sender}")
                             
-                            // Send ALL group messages to server for processing
-                            if (::serverRequestQueue.isInitialized) {
-                                serverRequestQueue.addRequest(
-                                    originalSbn = sbn,
-                                    message = notif.message,
-                                    sender = notif.sender,
-                                    groupName = notif.groupName,
-                                    isGroup = true
-                                )
+                            // Check allowlist before sending to server
+                            if (::allowlistManager.isInitialized && allowlistManager.isGroupAllowed(notif.groupName)) {
+                                Log.d(TAG, "Group '${notif.groupName}' is in allowlist - sending to server")
+                                if (::serverRequestQueue.isInitialized) {
+                                    serverRequestQueue.addRequest(
+                                        originalSbn = sbn,
+                                        message = notif.message,
+                                        sender = notif.sender,
+                                        groupName = notif.groupName,
+                                        isGroup = true
+                                    )
+                                }
+                            } else {
+                                Log.d(TAG, "Group '${notif.groupName}' not in allowlist - skipping server request")
                             }
                         }
                         is PersonalMessage -> {
                             Log.d(TAG, "Personal message: ${notif.sender}")
                             
-                            // Send ALL personal messages to server for processing
-                            if (::serverRequestQueue.isInitialized) {
-                                serverRequestQueue.addRequest(
-                                    originalSbn = sbn,
-                                    message = notif.message,
-                                    sender = notif.sender,
-                                    groupName = null,
-                                    isGroup = false
-                                )
+                            // Check allowlist before sending to server
+                            if (::allowlistManager.isInitialized && allowlistManager.isPersonalAllowed(notif.sender)) {
+                                Log.d(TAG, "Sender '${notif.sender}' is in allowlist - sending to server")
+                                if (::serverRequestQueue.isInitialized) {
+                                    serverRequestQueue.addRequest(
+                                        originalSbn = sbn,
+                                        message = notif.message,
+                                        sender = notif.sender,
+                                        groupName = null,
+                                        isGroup = false
+                                    )
+                                }
+                            } else {
+                                Log.d(TAG, "Sender '${notif.sender}' not in allowlist - skipping server request")
                             }
                         }
                         is UnreadSummary -> Log.d(TAG, "Unread summary - Info: ${notif.unreadInfo}")
