@@ -3,9 +3,9 @@
 ## Project Overview
 KakaoMiddleware is an Android application that intercepts KakaoTalk notifications and provides server-mediated automatic replies. The system sends ALL KakaoTalk messages to a custom server API and handles responses through background RemoteInput hijacking.
 
-## Project Status: Phase 2.1 Complete ✅
-**Current State**: Production-ready server-based middleware  
-**Architecture**: Universal message processing with conditional reply injection
+## Project Status: Phase 2.2 Complete ✅
+**Current State**: Production-ready server-based middleware with allowlist filtering  
+**Architecture**: Selective message processing with allowlist verification
 
 ## Architecture
 
@@ -40,11 +40,21 @@ KakaoMiddleware is an Android application that intercepts KakaoTalk notification
 
 #### 4. MainActivity
 - **Location**: `app/src/main/java/com/example/kakaomiddleware/MainActivity.kt`
-- **Purpose**: Simplified UI displaying logged notifications
+- **Purpose**: Tabbed UI for message logging and allowlist management
 - **Key Features**:
   - Real-time notification display with 1-second refresh
+  - Allowlist management for personal contacts and group chats
   - Button to open notification access settings
   - Jetpack Compose UI with Material Design 3
+
+#### 5. AllowlistManager
+- **Location**: `app/src/main/java/com/example/kakaomiddleware/AllowlistManager.kt`
+- **Purpose**: Singleton manager for allowlist storage and verification
+- **Key Features**:
+  - SharedPreferences-based persistent storage
+  - Separate allowlists for personal contacts and group chats
+  - Real-time updates via SharedPreferences change listeners
+  - Thread-safe singleton pattern for cross-component access
 
 ## Data Classes
 
@@ -126,11 +136,22 @@ val notification = when {
 
 ### Layout Structure
 ```
-KakaoMessageLogger
-├── Title: "KakaoTalk Message Logger"
-├── Button: "Enable Notification Access"
-└── LazyColumn: List of notifications (newest first)
-    └── NotificationItem: Card with timestamp and content
+MainScreen
+├── TabRow: "Messages" | "Allowlist"
+├── Messages Tab:
+│   ├── Title: "KakaoTalk Message Logger"
+│   ├── Button: "Enable Notification Access"
+│   └── LazyColumn: List of notifications (newest first)
+│       └── NotificationItem: Card with timestamp and content
+└── Allowlist Tab:
+    ├── Title: "Reply Allowlist"
+    ├── Description: Filtering information
+    ├── Personal Contacts Section:
+    │   ├── Input field + Add button
+    │   └── List of contacts with delete buttons
+    └── Group Chats Section:
+        ├── Input field + Add button
+        └── List of groups with delete buttons
 ```
 
 ## Permissions & Manifest
@@ -330,7 +351,8 @@ class GptRequestQueue {
 ### **Current Architecture: Server-Based Middleware**
 
 #### **Core Philosophy**
-- **Universal Processing**: ALL KakaoTalk messages sent to server (no client-side filtering)
+- **Selective Processing**: Only allowlisted contacts/groups are sent to server for processing
+- **Client-side Filtering**: AllowlistManager provides pre-filtering before server requests
 - **Server Intelligence**: Custom server decides when to respond based on message content
 - **Conditional Injection**: Android app only injects replies when server provides non-null response
 - **Invisible Operation**: Background RemoteInput hijacking maintains seamless UX
@@ -375,6 +397,8 @@ KakaoTalk Notification
     ↓
 KakaoNotificationListenerService (captures ALL messages)
     ↓
+AllowlistManager (verifies sender/group is allowlisted)
+    ↓ (only if allowlisted)
 ServerRequestQueue (queues for processing)
     ↓
 ServerApiService (HTTP POST to custom server)
@@ -441,8 +465,9 @@ KakaoTalk receives response (invisible to user)
 app/src/main/
 ├── AndroidManifest.xml (permissions & service declarations)
 ├── java/com/example/kakaomiddleware/
-│   ├── MainActivity.kt (simplified UI without API key management)
-│   ├── KakaoNotificationListenerService.kt (universal message capture)
+│   ├── MainActivity.kt (tabbed UI with allowlist management)
+│   ├── KakaoNotificationListenerService.kt (message capture with allowlist filtering)
+│   ├── AllowlistManager.kt (singleton allowlist storage and verification)
 │   ├── RemoteInputHijacker.kt (core hijacking functionality)
 │   ├── GptRequestQueue.kt → ServerRequestQueue.kt (server request processing)
 │   ├── ServerApiService.kt (OkHttp-based server client)
@@ -467,31 +492,75 @@ app/src/main/
    - Tap "Enable Notification Access" 
    - Find "KakaoMiddleware" in Android settings
    - Enable notification access permission
-3. **Verify server connectivity** (server should be running at https://kakaobot-server.vercel.app)
+3. **Configure allowlist** (Messages Tab → Allowlist Tab):
+   - Add personal contact names to Personal Contacts
+   - Add group chat names to Group Chats
+   - Only messages from allowlisted contacts/groups will trigger AI responses
+4. **Verify server connectivity** (server should be running at https://kakaobot-server.vercel.app)
 
 ### **Test Scenarios**
 
-#### **Scenario 1: Regular Message (No Reply)**
+#### **Scenario 1: Non-Allowlisted Contact (No Server Request)**
 ```
-Send in KakaoTalk: "Hey how are you?"
+Send from non-allowlisted contact: "Hey @GPT how are you?"
+Expected Result: ❌ No server request, ❌ No reply injected
+Log: "Sender 'ContactName' not in allowlist - skipping server request"
+```
+
+#### **Scenario 2: Allowlisted Contact, Regular Message (No Reply)**
+```
+Send from allowlisted contact: "Hey how are you?"
 Expected Result: ✅ Message sent to server, ❌ No reply injected
 Server Response: {"success": true, "reply": null}
 ```
 
-#### **Scenario 2: @GPT Trigger (Reply Injection)**
+#### **Scenario 3: Allowlisted Contact, @GPT Trigger (Reply Injection)**
 ```
-Send in KakaoTalk: "Hey @GPT how are you?"
+Send from allowlisted contact: "Hey @GPT how are you?"
 Expected Result: ✅ Message sent to server, ✅ "Hello, I'm GPT!" appears in chat
 Server Response: {"success": true, "reply": "Hello, I'm GPT!"}
 ```
 
 ### **Logging & Debug**
 Use Android Studio Logcat with these tags:
-- `KakaoNotificationListener` - Message detection and queuing
+- `KakaoNotificationListener` - Message detection and allowlist verification
+- `AllowlistManager` - Allowlist storage and verification results
 - `ServerRequestQueue` - Request processing and injection results  
 - `ServerApiService` - HTTP communication with server
 
 ### **Troubleshooting**
 - **No notifications captured**: Check notification access permissions
+- **Messages not being sent to server**: Verify contacts/groups are in allowlist
+- **Allowlist changes not taking effect**: Check that singleton AllowlistManager is being used
 - **Server errors**: Verify server is running and network connectivity
 - **Reply injection fails**: Check KakaoTalk version compatibility
+
+---
+
+## 🎯 Phase 2.2 Complete: Allowlist Feature
+
+### **New Feature: Selective Message Processing**
+
+#### **Allowlist Management**
+- **Personal Contacts**: Only messages from specified personal contacts are processed
+- **Group Chats**: Only messages from specified group chats are processed
+- **UI Management**: Tabbed interface for easy allowlist configuration
+- **Persistent Storage**: SharedPreferences-based storage survives app restarts
+
+#### **Technical Implementation**
+- **Singleton Pattern**: Single AllowlistManager instance shared across components
+- **Real-time Updates**: SharedPreferences change listeners for immediate sync
+- **Pre-filtering**: Client-side filtering before server requests to save bandwidth
+- **Thread Safety**: Concurrent access protection for notification service
+
+#### **User Experience**
+- **Privacy Control**: Users control exactly which contacts can trigger AI responses
+- **Bandwidth Optimization**: Reduced server requests and data usage
+- **Easy Management**: Add/remove contacts and groups with simple UI
+- **Visual Feedback**: Real-time allowlist updates in the interface
+
+### **Benefits**
+- ✅ **Privacy**: Only trusted contacts can trigger AI responses
+- ✅ **Performance**: Reduced server load and faster processing
+- ✅ **Control**: Fine-grained control over AI reply behavior
+- ✅ **Scalability**: Client-side filtering reduces server bandwidth usage

@@ -37,14 +37,12 @@ class AllowlistManager private constructor(context: Context) {
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             KEY_PERSONAL_ALLOWLIST -> {
-                val newList = loadPersonalAllowlist()
-                _personalAllowlist.value = newList
-                Log.d(TAG, "Personal allowlist updated from SharedPrefs: $newList")
+                _personalAllowlist.value = loadPersonalAllowlist()
+                Log.d(TAG, "Personal allowlist updated")
             }
             KEY_GROUP_ALLOWLIST -> {
-                val newList = loadGroupAllowlist()
-                _groupAllowlist.value = newList
-                Log.d(TAG, "Group allowlist updated from SharedPrefs: $newList")
+                _groupAllowlist.value = loadGroupAllowlist()
+                Log.d(TAG, "Group allowlist updated")
             }
         }
     }
@@ -52,7 +50,6 @@ class AllowlistManager private constructor(context: Context) {
     init {
         Log.d(TAG, "AllowlistManager initialized")
         sharedPrefs.registerOnSharedPreferenceChangeListener(prefsListener)
-        debugPrintAllowlists()
     }
     
     private fun loadPersonalAllowlist(): Set<String> {
@@ -110,33 +107,15 @@ class AllowlistManager private constructor(context: Context) {
     }
     
     fun isPersonalAllowed(sender: String): Boolean {
-        val currentList = _personalAllowlist.value
-        val trimmedSender = sender.trim()
-        val allowed = currentList.contains(trimmedSender)
-        Log.d(TAG, "Personal allowlist check:")
-        Log.d(TAG, "  - Sender: '$sender' (trimmed: '$trimmedSender')")
-        Log.d(TAG, "  - Current allowlist: $currentList")
-        Log.d(TAG, "  - Allowed: $allowed")
+        val allowed = _personalAllowlist.value.contains(sender.trim())
+        Log.d(TAG, "Personal allowlist check - Sender: '$sender', Allowed: $allowed")
         return allowed
     }
     
     fun isGroupAllowed(groupName: String): Boolean {
-        val currentList = _groupAllowlist.value
-        val trimmedGroupName = groupName.trim()
-        val allowed = currentList.contains(trimmedGroupName)
-        Log.d(TAG, "Group allowlist check:")
-        Log.d(TAG, "  - Group: '$groupName' (trimmed: '$trimmedGroupName')")
-        Log.d(TAG, "  - Current allowlist: $currentList")
-        Log.d(TAG, "  - Allowed: $allowed")
+        val allowed = _groupAllowlist.value.contains(groupName.trim())
+        Log.d(TAG, "Group allowlist check - Group: '$groupName', Allowed: $allowed")
         return allowed
     }
     
-    fun debugPrintAllowlists() {
-        Log.d(TAG, "=== ALLOWLIST DEBUG INFO ===")
-        Log.d(TAG, "Personal allowlist: ${_personalAllowlist.value}")
-        Log.d(TAG, "Group allowlist: ${_groupAllowlist.value}")
-        Log.d(TAG, "SharedPrefs personal: ${sharedPrefs.getString(KEY_PERSONAL_ALLOWLIST, "EMPTY")}")
-        Log.d(TAG, "SharedPrefs group: ${sharedPrefs.getString(KEY_GROUP_ALLOWLIST, "EMPTY")}")
-        Log.d(TAG, "=== END DEBUG INFO ===")
-    }
 }

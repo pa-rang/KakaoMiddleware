@@ -24,11 +24,6 @@ class KakaoNotificationListenerService : NotificationListenerService() {
         remoteInputHijacker = RemoteInputHijacker(this)
         allowlistManager = AllowlistManager.getInstance(this)
         Log.i(TAG, "NotificationListener connected")
-        
-        // Debug: Print current allowlists
-        if (::allowlistManager.isInitialized) {
-            allowlistManager.debugPrintAllowlists()
-        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
