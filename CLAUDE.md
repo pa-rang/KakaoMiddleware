@@ -4,8 +4,8 @@
 KakaoMiddleware is an Android application that intercepts KakaoTalk notifications and provides server-mediated automatic replies. The system sends ALL KakaoTalk messages to a custom server API and handles responses through background RemoteInput hijacking.
 
 ## Project Status: Phase 2.1 Complete ✅
-**Current State**: Server-based middleware with RemoteInput hijacking  
-**Architecture**: Simplified pipeline sending ALL messages to server API
+**Current State**: Production-ready server-based middleware  
+**Architecture**: Universal message processing with conditional reply injection
 
 ## Architecture
 
@@ -321,115 +321,131 @@ class GptRequestQueue {
 - [x] Error handling and retry logic
 - [x] Performance optimization and testing
 
-### ✅ **PHASE 2.1 COMPLETE - READY FOR TESTING**
+### ✅ **PHASE 2.1 COMPLETE - SERVER INTEGRATION READY**
 
 ---
 
-## 🎉 Phase 2.1 Implementation Summary
+## 🎉 Phase 2.1 Final Implementation
 
-### **New Components Added**
+### **Current Architecture: Server-Based Middleware**
 
-#### **1. RemoteInputHijacker.kt**
-- **Purpose**: Core hijacking functionality
-- **Key Methods**:
-  - `extractOriginalRemoteInput()` - Extracts RemoteInput from KakaoTalk notifications
-  - `injectResponse()` - Injects AI responses back to KakaoTalk
-  - `canHijackNotification()` - Validates hijacking capability
-  - `getHijackingDebugInfo()` - Debugging information
+#### **Core Philosophy**
+- **Universal Processing**: ALL KakaoTalk messages sent to server (no client-side filtering)
+- **Server Intelligence**: Custom server decides when to respond based on message content
+- **Conditional Injection**: Android app only injects replies when server provides non-null response
+- **Invisible Operation**: Background RemoteInput hijacking maintains seamless UX
 
-#### **2. GptRequestQueue.kt**
-- **Purpose**: Asynchronous AI request processing
-- **Features**:
-  - 3 concurrent thread limit for optimal performance
-  - Queue-based processing system
-  - Automatic "@GPT_call_it" trigger detection
-  - Error handling and retry logic
-  - Memory cleanup and shutdown procedures
+### **System Components**
 
-#### **3. GeminiApiService.kt**
-- **Purpose**: Google Gemini API integration
-- **Features**:
-  - REST API client with timeout handling
-  - Safety settings for content filtering
-  - Robust error handling and logging
-  - Configurable generation parameters
+#### **1. ServerRequestQueue.kt** (formerly GptRequestQueue.kt)
+- **Purpose**: High-throughput asynchronous server request processing
+- **Key Features**:
+  - 100 concurrent request limit for enterprise-scale processing
+  - Universal message processing (no trigger detection)
+  - Conditional reply injection based on server response
+  - Robust error handling and connection management
 
-#### **4. ApiKeyManager.kt**
-- **Purpose**: Secure API key management
-- **Features**:
-  - Runtime API key storage
-  - Validation methods
-  - Easy configuration interface
+#### **2. ServerApiService.kt** (replaces GeminiApiService.kt)
+- **Purpose**: OkHttp-based HTTP client for custom server communication
+- **Key Features**:
+  - RESTful API client with proper timeout configuration
+  - JSON payload creation and response parsing
+  - Comprehensive error handling for network failures
+  - Structured data classes matching server API schema
 
-### **Enhanced Components**
+#### **3. RemoteInputHijacker.kt**
+- **Purpose**: Core notification hijacking functionality
+- **Key Features**:
+  - Extracts RemoteInput from original KakaoTalk notifications
+  - Injects server responses back to KakaoTalk invisibly
+  - Validates hijacking capability before attempting injection
+  - Maintains notification context for seamless operation
 
-#### **KakaoNotificationListenerService.kt**
-- **New Features**:
-  - Integrated hijacking system initialization
-  - Real-time "@GPT_call_it" trigger detection
-  - Original notification preservation for hijacking
-  - Comprehensive debugging output
-  - Automatic cleanup on service disconnect
+#### **4. KakaoNotificationListenerService.kt**
+- **Enhanced Features**:
+  - Universal message capture and classification
+  - Automatic server request queuing for all message types
+  - Simplified logging and error handling
+  - Integration with ServerRequestQueue for background processing
 
-#### **MainActivity.kt**
-- **Added**: API key configuration UI
-- **Features**: Secure password input with validation
-
-### **System Architecture**
+### **Current System Flow**
 
 ```
-KakaoTalk Notification 
+KakaoTalk Notification
     ↓
-KakaoNotificationListenerService (detects @GPT_call_it)
+KakaoNotificationListenerService (captures ALL messages)
     ↓
-GptRequestQueue (queues request)
+ServerRequestQueue (queues for processing)
     ↓
-GeminiApiService (generates response)
+ServerApiService (HTTP POST to custom server)
     ↓
-RemoteInputHijacker (injects to original notification)
+Custom Server (https://kakaobot-server.vercel.app/api/v1/process-message)
     ↓
-KakaoTalk receives AI response
+Server Response (reply: "Hello, I'm GPT!" or reply: null)
+    ↓
+Conditional RemoteInput Hijacking (only if reply ≠ null)
+    ↓
+KakaoTalk receives response (invisible to user)
 ```
 
-### **Testing Checklist**
+### **Server Integration Details**
 
-#### **Pre-Testing Setup**
-- [ ] Install APK on Android device
-- [ ] Enable notification access for KakaoMiddleware
-- [ ] Configure Gemini API key in app
-- [ ] Verify network connectivity
+#### **API Endpoint**
+- **URL**: `https://kakaobot-server.vercel.app/api/v1/process-message`
+- **Method**: POST
+- **Content-Type**: application/json
 
-#### **Basic Functionality Tests**
-- [ ] Send KakaoTalk message with "@GPT_call_it what is 2+2?"
-- [ ] Verify AI response appears in KakaoTalk conversation
-- [ ] Test both personal and group message scenarios
-- [ ] Confirm invisible operation (no app switching)
+#### **Request Schema**
+```json
+{
+  "id": "msg_android_[timestamp]_[uuid]",
+  "isGroup": true,
+  "groupName": "My Friends",
+  "sender": "John",
+  "message": "Hello @GPT how are you?",
+  "timestamp": 1642425600000,
+  "deviceId": "android_kakaomiddleware"
+}
+```
 
-#### **Advanced Tests**
-- [ ] Send multiple "@GPT_call_it" requests simultaneously
-- [ ] Test with device screen off
-- [ ] Test while using other apps (YouTube, etc.)
-- [ ] Verify queue processing and memory cleanup
+#### **Server Logic**
+- **Trigger Detection**: Server checks for "@GPT" in message content
+- **Response Logic**:
+  - Contains "@GPT" → Returns `{"reply": "Hello, I'm GPT!"}`
+  - No "@GPT" → Returns `{"reply": null}`
+- **Android Behavior**:
+  - `reply ≠ null` → Inject response to KakaoTalk
+  - `reply = null` → Do nothing (silent processing)
 
-#### **Error Scenarios**
-- [ ] Test with invalid API key
-- [ ] Test with network disconnection
-- [ ] Test with malformed prompts
-- [ ] Verify graceful error handling
+### **Production Ready Features**
+
+#### **Scalability**
+- 100 concurrent server requests for high-throughput processing
+- Asynchronous queue system prevents blocking
+- Memory-efficient request handling with automatic cleanup
+
+#### **Reliability**
+- Comprehensive error handling for network failures
+- Graceful degradation when server is unavailable
+- Automatic retry logic and timeout management
+
+#### **Security**
+- No client-side API keys or sensitive data storage
+- Server-side intelligence and processing control
+- Minimal logging to prevent data leakage
 
 ---
 
 ## File Structure
 ```
 app/src/main/
-├── AndroidManifest.xml (permissions & service)
+├── AndroidManifest.xml (permissions & service declarations)
 ├── java/com/example/kakaomiddleware/
-│   ├── MainActivity.kt (UI with API key configuration)
-│   ├── KakaoNotificationListenerService.kt (enhanced with hijacking)
+│   ├── MainActivity.kt (simplified UI without API key management)
+│   ├── KakaoNotificationListenerService.kt (universal message capture)
 │   ├── RemoteInputHijacker.kt (core hijacking functionality)
-│   ├── GptRequestQueue.kt (asynchronous AI processing)
-│   ├── GeminiApiService.kt (Google Gemini API client)
-│   ├── ApiKeyManager.kt (secure key management)
+│   ├── GptRequestQueue.kt → ServerRequestQueue.kt (server request processing)
+│   ├── ServerApiService.kt (OkHttp-based server client)
 │   └── ui/theme/ (Material Design theme)
 └── res/ (app resources)
 ```
@@ -439,4 +455,43 @@ app/src/main/
 - Material Design 3
 - Android NotificationListenerService API
 - Kotlin Coroutines for async processing
-- Google Gemini API (REST)
+- OkHttp for HTTP client (4.12.0)
+- Custom Server API (Next.js 15)
+
+## 🧪 Testing Guide
+
+### **Setup Instructions**
+1. **Install APK** on Android device (build with `./gradlew assembleDebug`)
+2. **Enable notification access**:
+   - Open KakaoMiddleware app
+   - Tap "Enable Notification Access" 
+   - Find "KakaoMiddleware" in Android settings
+   - Enable notification access permission
+3. **Verify server connectivity** (server should be running at https://kakaobot-server.vercel.app)
+
+### **Test Scenarios**
+
+#### **Scenario 1: Regular Message (No Reply)**
+```
+Send in KakaoTalk: "Hey how are you?"
+Expected Result: ✅ Message sent to server, ❌ No reply injected
+Server Response: {"success": true, "reply": null}
+```
+
+#### **Scenario 2: @GPT Trigger (Reply Injection)**
+```
+Send in KakaoTalk: "Hey @GPT how are you?"
+Expected Result: ✅ Message sent to server, ✅ "Hello, I'm GPT!" appears in chat
+Server Response: {"success": true, "reply": "Hello, I'm GPT!"}
+```
+
+### **Logging & Debug**
+Use Android Studio Logcat with these tags:
+- `KakaoNotificationListener` - Message detection and queuing
+- `ServerRequestQueue` - Request processing and injection results  
+- `ServerApiService` - HTTP communication with server
+
+### **Troubleshooting**
+- **No notifications captured**: Check notification access permissions
+- **Server errors**: Verify server is running and network connectivity
+- **Reply injection fails**: Check KakaoTalk version compatibility
