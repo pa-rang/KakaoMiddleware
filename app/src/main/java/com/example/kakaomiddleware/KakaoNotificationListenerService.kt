@@ -1,8 +1,17 @@
 package com.example.kakaomiddleware
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.drawable.Icon
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Parcelable
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import androidx.annotation.RequiresApi
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -32,15 +41,66 @@ class KakaoNotificationListenerService : NotificationListenerService() {
         sbn?.let { notification ->
             if (notification.packageName == KAKAOTALK_PACKAGE) {
                 val extras = notification.notification.extras
+                
                 val title = extras.getString("android.title", "")
                 val text = extras.getString("android.text", "")
                 val subText = extras.getString("android.subText", "")
                 val isGroupConversation = extras.getBoolean("android.isGroupConversation", false)
                 
+                // Check for image messages in android.messages array
+                var imageUri: Uri? = null
+                var imageBitmap: Bitmap? = null
+                val messagesArray = extras.getParcelableArray("android.messages")
+                messagesArray?.let { messages ->
+                    messages.forEach { message ->
+                        if (message is Bundle) {
+                            val uri = message.get("uri") as? Uri
+                            val type = message.getString("type", "")
+                            
+                            if (uri != null && type.startsWith("image/")) {
+                                imageUri = uri
+                                try {
+                                    val inputStream = contentResolver.openInputStream(uri)
+                                    inputStream?.let { stream ->
+                                        imageBitmap = BitmapFactory.decodeStream(stream)
+                                        stream.close()
+                                        Log.d(TAG, "Image loaded: ${imageBitmap?.width}x${imageBitmap?.height}")
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error loading image: ${e.message}")
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 val timestamp = System.currentTimeMillis()
                 val formattedTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
                 
                 val notification = when {
+                    // Image message (detected from android.messages array)
+                    imageUri != null && imageBitmap != null -> {
+                        if (isGroupConversation && subText.isNotEmpty()) {
+                            ImageMessage(
+                                sender = title,
+                                imageUri = imageUri,
+                                imageBitmap = imageBitmap,
+                                groupName = subText,
+                                timestamp = timestamp,
+                                formattedTime = formattedTime
+                            )
+                        } else {
+                            ImageMessage(
+                                sender = title,
+                                imageUri = imageUri,
+                                imageBitmap = imageBitmap,
+                                groupName = null,
+                                timestamp = timestamp,
+                                formattedTime = formattedTime
+                            )
+                        }
+                    }
+                    // Regular text messages
                     text.isNotEmpty() && isGroupConversation && subText.isNotEmpty() -> {
                         GroupMessage(
                             groupName = subText,
@@ -72,12 +132,57 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                     notificationLog.add(notif)
                     
                     when (notif) {
+                        is ImageMessage -> {
+                            if (notif.groupName != null) {
+                                Log.d(TAG, "Group image: ${notif.groupName} - ${notif.sender}")
+                                // Check Turbo mode or allowlist before sending to server
+                                val shouldProcess = if (::allowlistManager.isInitialized) {
+                                    allowlistManager.isTurboModeEnabled() || allowlistManager.isGroupAllowed(notif.groupName)
+                                } else false
+                                
+                                if (shouldProcess) {
+                                    if (allowlistManager.isTurboModeEnabled()) {
+                                        Log.d(TAG, "Turbo mode enabled - sending group image to server")
+                                    } else {
+                                        Log.d(TAG, "Group '${notif.groupName}' is in allowlist - sending image to server")
+                                    }
+                                    // TODO: Add image support to ServerRequestQueue
+                                } else {
+                                    Log.d(TAG, "Group '${notif.groupName}' not in allowlist and Turbo mode disabled - skipping")
+                                }
+                            } else {
+                                Log.d(TAG, "Personal image: ${notif.sender}")
+                                // Check Turbo mode or allowlist before sending to server
+                                val shouldProcess = if (::allowlistManager.isInitialized) {
+                                    allowlistManager.isTurboModeEnabled() || allowlistManager.isPersonalAllowed(notif.sender)
+                                } else false
+                                
+                                if (shouldProcess) {
+                                    if (allowlistManager.isTurboModeEnabled()) {
+                                        Log.d(TAG, "Turbo mode enabled - sending personal image to server")
+                                    } else {
+                                        Log.d(TAG, "Sender '${notif.sender}' is in allowlist - sending image to server")
+                                    }
+                                    // TODO: Add image support to ServerRequestQueue
+                                } else {
+                                    Log.d(TAG, "Sender '${notif.sender}' not in allowlist and Turbo mode disabled - skipping")
+                                }
+                            }
+                        }
                         is GroupMessage -> {
                             Log.d(TAG, "Group message: ${notif.groupName} - ${notif.sender}")
                             
-                            // Check allowlist before sending to server
-                            if (::allowlistManager.isInitialized && allowlistManager.isGroupAllowed(notif.groupName)) {
-                                Log.d(TAG, "Group '${notif.groupName}' is in allowlist - sending to server")
+                            // Check Turbo mode or allowlist before sending to server
+                            val shouldProcess = if (::allowlistManager.isInitialized) {
+                                allowlistManager.isTurboModeEnabled() || allowlistManager.isGroupAllowed(notif.groupName)
+                            } else false
+                            
+                            if (shouldProcess) {
+                                if (allowlistManager.isTurboModeEnabled()) {
+                                    Log.d(TAG, "Turbo mode enabled - sending group message to server")
+                                } else {
+                                    Log.d(TAG, "Group '${notif.groupName}' is in allowlist - sending to server")
+                                }
                                 if (::serverRequestQueue.isInitialized) {
                                     serverRequestQueue.addRequest(
                                         originalSbn = sbn,
@@ -88,15 +193,23 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                                     )
                                 }
                             } else {
-                                Log.d(TAG, "Group '${notif.groupName}' not in allowlist - skipping server request")
+                                Log.d(TAG, "Group '${notif.groupName}' not in allowlist and Turbo mode disabled - skipping server request")
                             }
                         }
                         is PersonalMessage -> {
                             Log.d(TAG, "Personal message: ${notif.sender}")
                             
-                            // Check allowlist before sending to server
-                            if (::allowlistManager.isInitialized && allowlistManager.isPersonalAllowed(notif.sender)) {
-                                Log.d(TAG, "Sender '${notif.sender}' is in allowlist - sending to server")
+                            // Check Turbo mode or allowlist before sending to server
+                            val shouldProcess = if (::allowlistManager.isInitialized) {
+                                allowlistManager.isTurboModeEnabled() || allowlistManager.isPersonalAllowed(notif.sender)
+                            } else false
+                            
+                            if (shouldProcess) {
+                                if (allowlistManager.isTurboModeEnabled()) {
+                                    Log.d(TAG, "Turbo mode enabled - sending personal message to server")
+                                } else {
+                                    Log.d(TAG, "Sender '${notif.sender}' is in allowlist - sending to server")
+                                }
                                 if (::serverRequestQueue.isInitialized) {
                                     serverRequestQueue.addRequest(
                                         originalSbn = sbn,
@@ -107,7 +220,7 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                                     )
                                 }
                             } else {
-                                Log.d(TAG, "Sender '${notif.sender}' not in allowlist - skipping server request")
+                                Log.d(TAG, "Sender '${notif.sender}' not in allowlist and Turbo mode disabled - skipping server request")
                             }
                         }
                         is UnreadSummary -> Log.d(TAG, "Unread summary - Info: ${notif.unreadInfo}")
@@ -127,6 +240,26 @@ class KakaoNotificationListenerService : NotificationListenerService() {
             serverRequestQueue.shutdown()
         }
         Log.i(TAG, "NotificationListener disconnected")
+    }
+    
+    private fun processImageMessage(uri: Uri, bitmap: Bitmap, messageText: String, sender: String) {
+        Log.i(TAG, "🖼️ Processing image message from $sender")
+        Log.i(TAG, "   URI: $uri")
+        Log.i(TAG, "   Dimensions: ${bitmap.width}x${bitmap.height}")
+        Log.i(TAG, "   Message: $messageText")
+        
+        // TODO: Add your image processing logic here
+        // Examples:
+        // 1. Save image to external storage
+        // 2. Send image data to your server for AI analysis
+        // 3. Extract text from image using OCR
+        // 4. Convert to base64 for API transmission
+        // 5. Resize or compress image
+        
+        // Example: You could modify ServerRequestQueue to handle image messages
+        // if (::serverRequestQueue.isInitialized) {
+        //     serverRequestQueue.addImageRequest(uri, bitmap, sender, messageText)
+        // }
     }
 }
 
@@ -152,6 +285,15 @@ data class GroupMessage(
 
 data class UnreadSummary(
     val unreadInfo: String,
+    override val timestamp: Long,
+    override val formattedTime: String
+) : KakaoNotification()
+
+data class ImageMessage(
+    val sender: String,
+    val imageUri: Uri,
+    val imageBitmap: Bitmap?,
+    val groupName: String? = null, // null for personal, groupName for group
     override val timestamp: Long,
     override val formattedTime: String
 ) : KakaoNotification()

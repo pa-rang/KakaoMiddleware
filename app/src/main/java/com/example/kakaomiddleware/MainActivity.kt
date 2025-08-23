@@ -6,9 +6,11 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -18,6 +20,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -157,6 +161,27 @@ fun NotificationItem(notification: KakaoNotification) {
             ) {
                 Column {
                     when (notification) {
+                        is ImageMessage -> {
+                            if (notification.groupName != null) {
+                                Text(
+                                    text = notification.groupName,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = notification.sender,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            } else {
+                                Text(
+                                    text = notification.sender,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                         is GroupMessage -> {
                             Text(
                                 text = notification.groupName,
@@ -193,15 +218,47 @@ fun NotificationItem(notification: KakaoNotification) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text(
-                text = when (notification) {
-                    is GroupMessage -> notification.message
-                    is PersonalMessage -> notification.message
-                    is UnreadSummary -> notification.unreadInfo
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            when (notification) {
+                is ImageMessage -> {
+                    notification.imageBitmap?.let { bitmap ->
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Shared image",
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .height(200.dp)
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                        )
+                    } ?: Text(
+                        text = "📷 Image (failed to load)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                is GroupMessage -> {
+                    Text(
+                        text = notification.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                is PersonalMessage -> {
+                    Text(
+                        text = notification.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                is UnreadSummary -> {
+                    Text(
+                        text = notification.unreadInfo,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -213,6 +270,7 @@ fun AllowlistScreen(
 ) {
     val personalAllowlist by allowlistManager.personalAllowlist.collectAsState()
     val groupAllowlist by allowlistManager.groupAllowlist.collectAsState()
+    val turboMode by allowlistManager.turboMode.collectAsState()
     
     Column(
         modifier = modifier
@@ -227,11 +285,58 @@ fun AllowlistScreen(
         )
         
         Text(
-            text = "Only messages from these contacts/groups will be sent to the server for AI replies.",
+            text = if (turboMode) {
+                "🚀 TURBO MODE: All messages are sent to server regardless of allowlist."
+            } else {
+                "Only messages from these contacts/groups will be sent to the server for AI replies."
+            },
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 24.dp)
+            color = if (turboMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (turboMode) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.padding(bottom = 16.dp)
         )
+        
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (turboMode) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Turbo Mode",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (turboMode) {
+                            "All messages are processed by the server"
+                        } else {
+                            "Only allowlisted messages are processed"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = turboMode,
+                    onCheckedChange = { allowlistManager.setTurboMode(it) }
+                )
+            }
+        }
         
         AllowlistSection(
             title = "Personal Contacts",

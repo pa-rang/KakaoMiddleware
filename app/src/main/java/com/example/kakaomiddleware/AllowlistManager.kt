@@ -14,6 +14,7 @@ class AllowlistManager private constructor(context: Context) {
         private const val PREFS_NAME = "allowlist_prefs"
         private const val KEY_PERSONAL_ALLOWLIST = "personal_allowlist"
         private const val KEY_GROUP_ALLOWLIST = "group_allowlist"
+        private const val KEY_TURBO_MODE = "turbo_mode"
         private const val DELIMITER = "||"
         
         @Volatile
@@ -34,6 +35,9 @@ class AllowlistManager private constructor(context: Context) {
     private val _groupAllowlist = MutableStateFlow(loadGroupAllowlist())
     val groupAllowlist: StateFlow<Set<String>> = _groupAllowlist.asStateFlow()
     
+    private val _turboMode = MutableStateFlow(loadTurboMode())
+    val turboMode: StateFlow<Boolean> = _turboMode.asStateFlow()
+    
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         when (key) {
             KEY_PERSONAL_ALLOWLIST -> {
@@ -43,6 +47,10 @@ class AllowlistManager private constructor(context: Context) {
             KEY_GROUP_ALLOWLIST -> {
                 _groupAllowlist.value = loadGroupAllowlist()
                 Log.d(TAG, "Group allowlist updated")
+            }
+            KEY_TURBO_MODE -> {
+                _turboMode.value = loadTurboMode()
+                Log.d(TAG, "Turbo mode updated: ${_turboMode.value}")
             }
         }
     }
@@ -60,6 +68,10 @@ class AllowlistManager private constructor(context: Context) {
     private fun loadGroupAllowlist(): Set<String> {
         val saved = sharedPrefs.getString(KEY_GROUP_ALLOWLIST, "") ?: ""
         return if (saved.isEmpty()) emptySet() else saved.split(DELIMITER).toSet()
+    }
+    
+    private fun loadTurboMode(): Boolean {
+        return sharedPrefs.getBoolean(KEY_TURBO_MODE, false)
     }
     
     fun addPersonalContact(name: String) {
@@ -116,6 +128,18 @@ class AllowlistManager private constructor(context: Context) {
         val allowed = _groupAllowlist.value.contains(groupName.trim())
         Log.d(TAG, "Group allowlist check - Group: '$groupName', Allowed: $allowed")
         return allowed
+    }
+    
+    fun setTurboMode(enabled: Boolean) {
+        _turboMode.value = enabled
+        sharedPrefs.edit()
+            .putBoolean(KEY_TURBO_MODE, enabled)
+            .apply()
+        Log.d(TAG, "Turbo mode set to: $enabled")
+    }
+    
+    fun isTurboModeEnabled(): Boolean {
+        return _turboMode.value
     }
     
 }
