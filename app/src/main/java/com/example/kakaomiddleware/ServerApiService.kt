@@ -37,7 +37,7 @@ class ServerApiService {
     
     companion object {
         private const val TAG = "ServerApiService"
-        private const val API_ENDPOINT = "https://kakaobot-server3.vercel.app/api/v1/process-message"
+        private const val API_ENDPOINT = "https://kakao-agent-server-dun.vercel.app/api/v1/process-message"
         private const val DEVICE_ID = "android_kakaomiddleware"
     }
     
