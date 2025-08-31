@@ -41,18 +41,17 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     
     /**
      * 중복 메시지 확인 및 캐시 업데이트
-     * @param sender 발신자
-     * @param message 메시지 내용
+     * @param messageKey 메시지 고유 키
      * @return true if duplicate, false if new message
      */
-    private fun isDuplicateMessage(sender: String, message: String): Boolean {
-        val messageKey = "${sender}:${message}:${System.currentTimeMillis() / 10000}" // 10초 단위로 그룹핑
+    private fun isDuplicateMessage(messageKey: String): Boolean {
+        val timestampedKey = "$messageKey:${System.currentTimeMillis() / 5000}" // 5초 단위로 그룹핑
         
-        return if (recentMessagesCache.contains(messageKey)) {
-            Log.d(TAG, "🔄 Duplicate message detected: $sender -> $message")
+        return if (recentMessagesCache.contains(timestampedKey)) {
+            Log.d(TAG, "🔄 Duplicate message detected: $messageKey")
             true
         } else {
-            recentMessagesCache.add(messageKey)
+            recentMessagesCache.add(timestampedKey)
             // 캐시 크기 제한 (최대 100개)
             if (recentMessagesCache.size > 100) {
                 val iterator = recentMessagesCache.iterator()
@@ -156,6 +155,24 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                 }
                 
                 notification?.let { notif ->
+                    // 모든 메시지 타입에 대해 중복 검사 수행
+                    val messageKey = when (notif) {
+                        is ImageMessage -> {
+                            val identifier = if (notif.groupName != null) "${notif.groupName}:${notif.sender}" else notif.sender
+                            "$identifier:[Image]"
+                        }
+                        is GroupMessage -> "${notif.groupName}:${notif.sender}:${notif.message}"
+                        is PersonalMessage -> "${notif.sender}:${notif.message}"
+                        is UnreadSummary -> "summary:${notif.unreadInfo}"
+                    }
+                    
+                    // 중복 메시지 검사 (UnreadSummary 제외)
+                    if (notif !is UnreadSummary && isDuplicateMessage(messageKey)) {
+                        Log.d(TAG, "🔄 Skipping duplicate notification: $messageKey")
+                        return@let
+                    }
+                    
+                    // 중복이 아닌 경우에만 로그에 추가
                     notificationLog.add(notif)
                     
                     when (notif) {
@@ -217,12 +234,6 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         is GroupMessage -> {
                             Log.d(TAG, "Group message: ${notif.groupName} - ${notif.sender}")
                             
-                            // 중복 메시지 검사
-                            if (isDuplicateMessage("${notif.groupName}:${notif.sender}", notif.message)) {
-                                Log.d(TAG, "Skipping duplicate group message")
-                                return@let
-                            }
-                            
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
                                 allowlistManager.isTurboModeEnabled() || allowlistManager.isGroupAllowed(notif.groupName)
@@ -249,12 +260,6 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         }
                         is PersonalMessage -> {
                             Log.d(TAG, "Personal message: ${notif.sender}")
-                            
-                            // 중복 메시지 검사
-                            if (isDuplicateMessage(notif.sender, notif.message)) {
-                                Log.d(TAG, "Skipping duplicate personal message")
-                                return@let
-                            }
                             
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
