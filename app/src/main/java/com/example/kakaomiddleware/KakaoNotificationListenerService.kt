@@ -166,13 +166,19 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         is UnreadSummary -> "summary:${notif.unreadInfo}"
                     }
                     
-                    // 중복 메시지 검사 (UnreadSummary 제외)
-                    if (notif !is UnreadSummary && isDuplicateMessage(messageKey)) {
+                    // UnreadSummary는 UI에 표시하지 않음
+                    if (notif is UnreadSummary) {
+                        Log.d(TAG, "Unread summary ignored for UI: ${notif.unreadInfo}")
+                        return@let
+                    }
+                    
+                    // 중복 메시지 검사
+                    if (isDuplicateMessage(messageKey)) {
                         Log.d(TAG, "🔄 Skipping duplicate notification: $messageKey")
                         return@let
                     }
                     
-                    // 중복이 아닌 경우에만 로그에 추가
+                    // 유효한 메시지만 로그에 추가 (UnreadSummary 제외)
                     notificationLog.add(notif)
                     
                     when (notif) {
@@ -285,7 +291,10 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                                 Log.d(TAG, "Sender '${notif.sender}' not in allowlist and Turbo mode disabled - skipping server request")
                             }
                         }
-                        is UnreadSummary -> Log.d(TAG, "Unread summary - Info: ${notif.unreadInfo}")
+                        is UnreadSummary -> {
+                            // UnreadSummary는 위에서 이미 필터링됨, 이 경우는 도달하지 않음
+                            Log.w(TAG, "UnreadSummary reached when block - this should not happen")
+                        }
                     }
                 } ?: Log.d(TAG, "Unknown notification type ignored")
             }
