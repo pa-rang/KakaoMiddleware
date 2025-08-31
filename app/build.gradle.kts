@@ -8,6 +8,11 @@ android {
     namespace = "com.example.kakaomiddleware"
     compileSdk = 36
 
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.example.kakaomiddleware"
         minSdk = 24
@@ -25,6 +30,13 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "API_ENDPOINT", "\"https://kakao-agent-server-dun.vercel.app/api/v1/process-message\"")
+        }
+        debug {
+            // 에뮬레이터용: http://10.0.2.2:3000/api/v1/process-message
+            // 실제 기기용: 아래 IP를 본인 컴퓨터 IP로 변경하세요
+            buildConfigField("String", "API_ENDPOINT", "\"http://192.168.10.190:3000/api/v1/process-message\"")
+            applicationIdSuffix = ".debug"
         }
     }
     compileOptions {
@@ -33,9 +45,6 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
-    }
-    buildFeatures {
-        compose = true
     }
 }
 

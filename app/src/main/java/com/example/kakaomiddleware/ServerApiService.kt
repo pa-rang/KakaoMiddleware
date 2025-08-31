@@ -7,6 +7,7 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.util.*
 
 data class MessageData(
@@ -16,7 +17,8 @@ data class MessageData(
     val sender: String,
     val message: String,
     val timestamp: Long,
-    val deviceId: String
+    val deviceId: String,
+    val imageBitmap: android.graphics.Bitmap? = null
 )
 
 data class ServerResponse(
@@ -37,7 +39,7 @@ class ServerApiService {
     
     companion object {
         private const val TAG = "ServerApiService"
-        private const val API_ENDPOINT = "https://kakao-agent-server-dun.vercel.app/api/v1/process-message"
+        private val API_ENDPOINT = BuildConfig.API_ENDPOINT
         private const val DEVICE_ID = "android_kakaomiddleware"
     }
     
@@ -46,6 +48,18 @@ class ServerApiService {
         .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .build()
+    
+    init {
+        // 앱 시작시 현재 사용 중인 서버 엔드포인트 로그 출력
+        val serverType = if (API_ENDPOINT.contains("localhost") || API_ENDPOINT.contains("192.168") || API_ENDPOINT.contains("10.0.2.2")) {
+            "🏠 LOCAL SERVER"
+        } else {
+            "☁️ PRODUCTION SERVER"
+        }
+        Log.i(TAG, "🌐 SERVER ENDPOINT: $API_ENDPOINT")
+        Log.i(TAG, "🏷️ SERVER TYPE: $serverType")
+        Log.i(TAG, "📱 DEVICE ID: $DEVICE_ID")
+    }
     
     suspend fun processMessage(
         messageId: String,
@@ -77,27 +91,105 @@ class ServerApiService {
         }
     }
     
+    suspend fun processImageMessage(
+        messageId: String,
+        isGroup: Boolean,
+        groupName: String?,
+        sender: String,
+        message: String,
+        timestamp: Long,
+        imageBitmap: android.graphics.Bitmap
+    ): Result<ServerResponse> = withContext(Dispatchers.IO) {
+        try {
+            val messageData = MessageData(
+                id = messageId,
+                isGroup = isGroup,
+                groupName = groupName,
+                sender = sender,
+                message = message,
+                timestamp = timestamp,
+                deviceId = DEVICE_ID,
+                imageBitmap = imageBitmap
+            )
+            
+            val response = sendToServer(messageData)
+            Log.d(TAG, "Server processed image message: $messageId")
+            
+            Result.success(response)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Server request for image failed: $messageId - ${e.message}")
+            Result.failure(e)
+        }
+    }
+    
     private suspend fun sendToServer(messageData: MessageData): ServerResponse {
-        val jsonPayload = createJsonPayload(messageData)
+        // 서버 요청 전 로그 출력
+        Log.i(TAG, "📡 Sending request to: $API_ENDPOINT")
+        Log.d(TAG, "📝 Message: ${messageData.sender} -> '${messageData.message}'")
         
+        val request = if (messageData.imageBitmap != null) {
+            createMultipartRequest(messageData)
+        } else {
+            createJsonRequest(messageData)
+        }
+        
+        val response = client.newCall(request).execute()
+        val responseBody = response.body?.string()
+        
+        // 서버 응답 로그 출력
+        Log.i(TAG, "📥 Server response: ${response.code} - ${response.message}")
+        Log.d(TAG, "📋 Response body: $responseBody")
+        
+        if (response.isSuccessful) {
+            return parseSuccessResponse(responseBody)
+        } else {
+            Log.e(TAG, "❌ Server error: ${response.code} - $responseBody")
+            throw Exception("Server error: ${response.code} - $responseBody")
+        }
+    }
+
+    private fun createJsonRequest(messageData: MessageData): Request {
+        val jsonPayload = createJsonPayload(messageData)
         val requestBody = jsonPayload.toString()
             .toRequestBody("application/json".toMediaType())
         
-        val request = Request.Builder()
+        return Request.Builder()
             .url(API_ENDPOINT)
             .post(requestBody)
             .addHeader("Content-Type", "application/json")
             .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
             .build()
-        
-        val response = client.newCall(request).execute()
-        val responseBody = response.body?.string()
-        
-        if (response.isSuccessful) {
-            return parseSuccessResponse(responseBody)
-        } else {
-            throw Exception("Server error: ${response.code} - $responseBody")
+    }
+    
+    private fun createMultipartRequest(messageData: MessageData): Request {
+        val jsonPayload = createJsonPayload(messageData).toString()
+
+        val imageByteArray = messageData.imageBitmap?.let {
+            val stream = ByteArrayOutputStream()
+            it.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, stream)
+            stream.toByteArray()
         }
+
+        val requestBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("json_data", jsonPayload)
+            .apply {
+                imageByteArray?.let {
+                    addFormDataPart(
+                        "image_file",
+                        "image.jpg",
+                        it.toRequestBody("image/jpeg".toMediaType(), 0, it.size)
+                    )
+                }
+            }
+            .build()
+
+        return Request.Builder()
+            .url(API_ENDPOINT)
+            .post(requestBody)
+            .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
+            .build()
     }
     
     private fun createJsonPayload(messageData: MessageData): JSONObject {
