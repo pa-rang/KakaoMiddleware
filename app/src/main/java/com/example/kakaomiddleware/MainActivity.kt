@@ -16,6 +16,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,10 +35,12 @@ import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
     private lateinit var allowlistManager: AllowlistManager
+    private lateinit var serverConfigManager: ServerConfigManager
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         allowlistManager = AllowlistManager.getInstance(this)
+        serverConfigManager = ServerConfigManager.getInstance(this)
         enableEdgeToEdge()
         setContent {
             KakaoMiddlewareTheme {
@@ -44,6 +48,7 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         modifier = Modifier.padding(innerPadding),
                         allowlistManager = allowlistManager,
+                        serverConfigManager = serverConfigManager,
                         onOpenSettings = {
                             val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                             startActivity(intent)
@@ -59,10 +64,11 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     modifier: Modifier = Modifier,
     allowlistManager: AllowlistManager,
+    serverConfigManager: ServerConfigManager,
     onOpenSettings: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Messages", "Allowlist")
+    val tabs = listOf("Messages", "Allowlist", "Settings")
     
     Column(modifier = modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = selectedTab) {
@@ -83,6 +89,10 @@ fun MainScreen(
             1 -> AllowlistScreen(
                 modifier = Modifier.fillMaxSize(),
                 allowlistManager = allowlistManager
+            )
+            2 -> ServerSettingsScreen(
+                modifier = Modifier.fillMaxSize(),
+                serverConfigManager = serverConfigManager
             )
         }
     }
@@ -447,6 +457,282 @@ fun AllowlistSection(
                                     contentDescription = "Remove",
                                     tint = MaterialTheme.colorScheme.error
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ServerSettingsScreen(
+    modifier: Modifier = Modifier,
+    serverConfigManager: ServerConfigManager
+) {
+    val customServerUrl by serverConfigManager.customServerUrl.collectAsState()
+    val useCustomServer by serverConfigManager.useCustomServer.collectAsState()
+    val currentEndpoint by serverConfigManager.currentEndpoint.collectAsState()
+    
+    // serverType도 반응형으로 계산
+    val serverType = remember(currentEndpoint) {
+        when {
+            currentEndpoint.contains("localhost") || currentEndpoint.contains("192.168") || currentEndpoint.contains("10.0.2.2") -> "🏠 LOCAL SERVER"
+            currentEndpoint.contains("vercel.app") -> "☁️ PRODUCTION SERVER"
+            else -> "🔧 CUSTOM SERVER"
+        }
+    }
+    
+    var editingUrl by remember { mutableStateOf("") }
+    var showUrlEditor by remember { mutableStateOf(false) }
+    var urlError by remember { mutableStateOf("") }
+    
+    // 에디팅 모드가 시작될 때 현재 URL로 초기화
+    LaunchedEffect(showUrlEditor) {
+        if (showUrlEditor) {
+            editingUrl = customServerUrl
+            urlError = ""
+        }
+    }
+    
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Server Settings",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        // 현재 서버 상태
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Server Status",
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text(
+                        text = "Current Server",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = serverType,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    text = currentEndpoint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        
+        // 커스텀 서버 사용 토글
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Use Custom Server",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (useCustomServer) {
+                            "Using custom server configuration"
+                        } else {
+                            "Using default build configuration"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = useCustomServer,
+                    onCheckedChange = { newValue ->
+                        println("Switch onCheckedChange: $useCustomServer -> $newValue")
+                        serverConfigManager.setUseCustomServer(newValue)
+                    }
+                )
+            }
+        }
+        
+        // 커스텀 서버 설정 (useCustomServer가 true일 때만 표시)
+        if (useCustomServer) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Custom Server Configuration",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    
+                    if (!showUrlEditor) {
+                        // URL 표시 모드
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Server URL",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = customServerUrl,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            Button(
+                                onClick = { showUrlEditor = true }
+                            ) {
+                                Text("Edit")
+                            }
+                        }
+                    } else {
+                        // URL 편집 모드
+                        OutlinedTextField(
+                            value = editingUrl,
+                            onValueChange = { 
+                                editingUrl = it
+                                urlError = if (serverConfigManager.isValidUrl(it.trim())) "" else "Invalid URL format"
+                            },
+                            label = { Text("Server URL") },
+                            placeholder = { Text("http://192.168.1.100:3000") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            singleLine = true,
+                            isError = urlError.isNotEmpty(),
+                            supportingText = if (urlError.isNotEmpty()) {
+                                { Text(urlError, color = MaterialTheme.colorScheme.error) }
+                            } else null,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    if (urlError.isEmpty() && editingUrl.trim().isNotEmpty()) {
+                                        serverConfigManager.setCustomServerUrl(editingUrl.trim())
+                                        showUrlEditor = false
+                                    }
+                                }
+                            )
+                        )
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (urlError.isEmpty() && editingUrl.trim().isNotEmpty()) {
+                                        serverConfigManager.setCustomServerUrl(editingUrl.trim())
+                                        showUrlEditor = false
+                                    }
+                                },
+                                enabled = urlError.isEmpty() && editingUrl.trim().isNotEmpty(),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Save")
+                            }
+                            
+                            OutlinedButton(
+                                onClick = { showUrlEditor = false },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Cancel")
+                            }
+                        }
+                    }
+                    
+                    // 프리셋 URL 버튼들
+                    if (!showUrlEditor) {
+                        Text(
+                            text = "Quick Presets",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                        )
+                        
+                        serverConfigManager.getPresetUrls().forEach { presetUrl ->
+                            val isCurrentUrl = presetUrl == customServerUrl
+                            FilledTonalButton(
+                                onClick = { 
+                                    println("🔘 Preset button clicked: $presetUrl")
+                                    println("   Current URL: $customServerUrl")
+                                    println("   Is current: $isCurrentUrl")
+                                    if (!isCurrentUrl) {
+                                        println("   Calling setCustomServerUrl...")
+                                        serverConfigManager.setCustomServerUrl(presetUrl)
+                                    } else {
+                                        println("   Skipped (same URL)")
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                colors = if (isCurrentUrl) {
+                                    ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    ButtonDefaults.filledTonalButtonColors()
+                                }
+                            ) {
+                                Text(
+                                    text = presetUrl,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                if (isCurrentUrl) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Current",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                         }
                     }

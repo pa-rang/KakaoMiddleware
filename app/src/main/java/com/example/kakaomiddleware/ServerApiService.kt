@@ -1,5 +1,6 @@
 package com.example.kakaomiddleware
 
+import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,12 +36,15 @@ data class ErrorInfo(
     val retryAfter: Int?
 )
 
-class ServerApiService {
+class ServerApiService(private val context: Context? = null) {
     
     companion object {
         private const val TAG = "ServerApiService"
-        private val API_ENDPOINT = BuildConfig.API_ENDPOINT
         private const val DEVICE_ID = "android_kakaomiddleware"
+        
+        // Fallback to BuildConfig if ServerConfigManager is not available
+        // BuildConfig now always contains production server endpoint
+        private val FALLBACK_API_ENDPOINT = BuildConfig.API_ENDPOINT
     }
     
     private val client = OkHttpClient.Builder()
@@ -49,16 +53,30 @@ class ServerApiService {
         .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .build()
     
+    private val serverConfigManager: ServerConfigManager? = 
+        context?.let { ServerConfigManager.getInstance(it) }
+    
+    private fun getApiEndpoint(): String {
+        return serverConfigManager?.getCurrentEndpoint() ?: FALLBACK_API_ENDPOINT
+    }
+    
     init {
         // 앱 시작시 현재 사용 중인 서버 엔드포인트 로그 출력
-        val serverType = if (API_ENDPOINT.contains("localhost") || API_ENDPOINT.contains("192.168") || API_ENDPOINT.contains("10.0.2.2")) {
-            "🏠 LOCAL SERVER"
-        } else {
-            "☁️ PRODUCTION SERVER"
+        val apiEndpoint = getApiEndpoint()
+        val serverType = when {
+            apiEndpoint.contains("localhost") || apiEndpoint.contains("192.168") || apiEndpoint.contains("10.0.2.2") -> "🏠 LOCAL SERVER"
+            apiEndpoint.contains("vercel.app") -> "☁️ PRODUCTION SERVER"
+            else -> "🔧 CUSTOM SERVER"
         }
-        Log.i(TAG, "🌐 SERVER ENDPOINT: $API_ENDPOINT")
+        val configSource = if (serverConfigManager != null) "Settings" else "BuildConfig"
+        
+        Log.i(TAG, "🌐 SERVER ENDPOINT: $apiEndpoint")
         Log.i(TAG, "🏷️ SERVER TYPE: $serverType")
         Log.i(TAG, "📱 DEVICE ID: $DEVICE_ID")
+        Log.i(TAG, "⚙️ CONFIG SOURCE: $configSource")
+        if (BuildConfig.DEBUG && serverConfigManager != null) {
+            Log.i(TAG, "🔧 DEBUG MODE: Using Settings-configured server address")
+        }
     }
     
     suspend fun processMessage(
@@ -124,8 +142,9 @@ class ServerApiService {
     }
     
     private suspend fun sendToServer(messageData: MessageData): ServerResponse {
-        // 서버 요청 전 로그 출력
-        Log.i(TAG, "📡 Sending request to: $API_ENDPOINT")
+        // 서버 요청 전 로그 출력 (실시간 엔드포인트 사용)
+        val currentApiEndpoint = getApiEndpoint()
+        Log.i(TAG, "📡 Sending request to: $currentApiEndpoint")
         Log.d(TAG, "📝 Message: ${messageData.sender} -> '${messageData.message}'")
         
         val request = if (messageData.imageBitmap != null) {
@@ -155,7 +174,7 @@ class ServerApiService {
             .toRequestBody("application/json".toMediaType())
         
         return Request.Builder()
-            .url(API_ENDPOINT)
+            .url(getApiEndpoint())
             .post(requestBody)
             .addHeader("Content-Type", "application/json")
             .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
@@ -186,7 +205,7 @@ class ServerApiService {
             .build()
 
         return Request.Builder()
-            .url(API_ENDPOINT)
+            .url(getApiEndpoint())
             .post(requestBody)
             .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
             .build()

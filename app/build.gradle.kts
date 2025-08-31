@@ -33,9 +33,9 @@ android {
             buildConfigField("String", "API_ENDPOINT", "\"https://kakao-agent-server-dun.vercel.app/api/v1/process-message\"")
         }
         debug {
-            // 에뮬레이터용: http://10.0.2.2:3000/api/v1/process-message
-            // 실제 기기용: 아래 IP를 본인 컴퓨터 IP로 변경하세요
-            buildConfigField("String", "API_ENDPOINT", "\"http://192.168.10.190:3000/api/v1/process-message\"")
+            // Debug 빌드는 Settings에서 동적으로 설정된 서버 주소 사용
+            // BuildConfig는 프로덕션 서버를 fallback으로만 사용
+            buildConfigField("String", "API_ENDPOINT", "\"https://kakao-agent-server-dun.vercel.app/api/v1/process-message\"")
             applicationIdSuffix = ".debug"
         }
     }

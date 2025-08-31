@@ -29,7 +29,7 @@ class ServerRequestQueue(private val context: Context) {
     private val processingQueue = ConcurrentLinkedQueue<ServerRequest>()
     private val activeRequests = AtomicInteger(0)
     private val queueScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val serverApiService = ServerApiService()
+    private val serverApiService = ServerApiService(context)
     private val remoteInputHijacker = RemoteInputHijacker(context)
     
     init {
