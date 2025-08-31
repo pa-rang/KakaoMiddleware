@@ -27,12 +27,39 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     private lateinit var remoteInputHijacker: RemoteInputHijacker
     private lateinit var allowlistManager: AllowlistManager
     
+    // 중복 메시지 방지를 위한 캐시 (sender+message를 키로 사용)
+    private val recentMessagesCache = mutableSetOf<String>()
+    private val cacheCleanupInterval = 30000L // 30초
+    
     override fun onListenerConnected() {
         super.onListenerConnected()
         serverRequestQueue = ServerRequestQueue(this)
         remoteInputHijacker = RemoteInputHijacker(this)
         allowlistManager = AllowlistManager.getInstance(this)
         Log.i(TAG, "NotificationListener connected")
+    }
+    
+    /**
+     * 중복 메시지 확인 및 캐시 업데이트
+     * @param sender 발신자
+     * @param message 메시지 내용
+     * @return true if duplicate, false if new message
+     */
+    private fun isDuplicateMessage(sender: String, message: String): Boolean {
+        val messageKey = "${sender}:${message}:${System.currentTimeMillis() / 10000}" // 10초 단위로 그룹핑
+        
+        return if (recentMessagesCache.contains(messageKey)) {
+            Log.d(TAG, "🔄 Duplicate message detected: $sender -> $message")
+            true
+        } else {
+            recentMessagesCache.add(messageKey)
+            // 캐시 크기 제한 (최대 100개)
+            if (recentMessagesCache.size > 100) {
+                val iterator = recentMessagesCache.iterator()
+                repeat(20) { if (iterator.hasNext()) iterator.remove() }
+            }
+            false
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -146,7 +173,16 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                                     } else {
                                         Log.d(TAG, "Group '${notif.groupName}' is in allowlist - sending image to server")
                                     }
-                                    // TODO: Add image support to ServerRequestQueue
+                                    notif.imageBitmap?.let { bitmap ->
+                                        serverRequestQueue.addRequest(
+                                            originalSbn = sbn,
+                                            message = text, // Or a placeholder like "[Image]"
+                                            sender = notif.sender,
+                                            groupName = notif.groupName,
+                                            isGroup = true,
+                                            imageBitmap = bitmap
+                                        )
+                                    }
                                 } else {
                                     Log.d(TAG, "Group '${notif.groupName}' not in allowlist and Turbo mode disabled - skipping")
                                 }
@@ -163,7 +199,16 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                                     } else {
                                         Log.d(TAG, "Sender '${notif.sender}' is in allowlist - sending image to server")
                                     }
-                                    // TODO: Add image support to ServerRequestQueue
+                                    notif.imageBitmap?.let { bitmap ->
+                                        serverRequestQueue.addRequest(
+                                            originalSbn = sbn,
+                                            message = text, // Or a placeholder like "[Image]"
+                                            sender = notif.sender,
+                                            groupName = null,
+                                            isGroup = false,
+                                            imageBitmap = bitmap
+                                        )
+                                    }
                                 } else {
                                     Log.d(TAG, "Sender '${notif.sender}' not in allowlist and Turbo mode disabled - skipping")
                                 }
@@ -171,6 +216,12 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         }
                         is GroupMessage -> {
                             Log.d(TAG, "Group message: ${notif.groupName} - ${notif.sender}")
+                            
+                            // 중복 메시지 검사
+                            if (isDuplicateMessage("${notif.groupName}:${notif.sender}", notif.message)) {
+                                Log.d(TAG, "Skipping duplicate group message")
+                                return@let
+                            }
                             
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
@@ -198,6 +249,12 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         }
                         is PersonalMessage -> {
                             Log.d(TAG, "Personal message: ${notif.sender}")
+                            
+                            // 중복 메시지 검사
+                            if (isDuplicateMessage(notif.sender, notif.message)) {
+                                Log.d(TAG, "Skipping duplicate personal message")
+                                return@let
+                            }
                             
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
@@ -242,25 +299,6 @@ class KakaoNotificationListenerService : NotificationListenerService() {
         Log.i(TAG, "NotificationListener disconnected")
     }
     
-    private fun processImageMessage(uri: Uri, bitmap: Bitmap, messageText: String, sender: String) {
-        Log.i(TAG, "🖼️ Processing image message from $sender")
-        Log.i(TAG, "   URI: $uri")
-        Log.i(TAG, "   Dimensions: ${bitmap.width}x${bitmap.height}")
-        Log.i(TAG, "   Message: $messageText")
-        
-        // TODO: Add your image processing logic here
-        // Examples:
-        // 1. Save image to external storage
-        // 2. Send image data to your server for AI analysis
-        // 3. Extract text from image using OCR
-        // 4. Convert to base64 for API transmission
-        // 5. Resize or compress image
-        
-        // Example: You could modify ServerRequestQueue to handle image messages
-        // if (::serverRequestQueue.isInitialized) {
-        //     serverRequestQueue.addImageRequest(uri, bitmap, sender, messageText)
-        // }
-    }
 }
 
 sealed class KakaoNotification {

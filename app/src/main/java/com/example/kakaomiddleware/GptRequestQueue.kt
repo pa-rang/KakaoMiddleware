@@ -1,6 +1,7 @@
 package com.example.kakaomiddleware
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import kotlinx.coroutines.*
@@ -14,7 +15,8 @@ data class ServerRequest(
     val sender: String,
     val groupName: String?,
     val isGroup: Boolean,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val imageBitmap: Bitmap? = null
 )
 
 class ServerRequestQueue(private val context: Context) {
@@ -43,7 +45,8 @@ class ServerRequestQueue(private val context: Context) {
         message: String,
         sender: String,
         groupName: String? = null,
-        isGroup: Boolean = false
+        isGroup: Boolean = false,
+        imageBitmap: Bitmap? = null
     ) {
         val requestId = serverApiService.generateMessageId()
         
@@ -53,7 +56,8 @@ class ServerRequestQueue(private val context: Context) {
             message = message,
             sender = sender,
             groupName = groupName,
-            isGroup = isGroup
+            isGroup = isGroup,
+            imageBitmap = imageBitmap
         )
         
         processingQueue.offer(request)
@@ -95,14 +99,27 @@ class ServerRequestQueue(private val context: Context) {
             }
             
             // Send message to server for processing
-            val result = serverApiService.processMessage(
-                messageId = request.id,
-                isGroup = request.isGroup,
-                groupName = request.groupName,
-                sender = request.sender,
-                message = request.message,
-                timestamp = request.timestamp
-            )
+            val result = if (request.imageBitmap != null) {
+                Log.d(TAG, "Sending image message to server. Bitmap size: ${request.imageBitmap.byteCount} bytes")
+                serverApiService.processImageMessage(
+                    messageId = request.id,
+                    isGroup = request.isGroup,
+                    groupName = request.groupName,
+                    sender = request.sender,
+                    message = request.message,
+                    timestamp = request.timestamp,
+                    imageBitmap = request.imageBitmap
+                )
+            } else {
+                serverApiService.processMessage(
+                    messageId = request.id,
+                    isGroup = request.isGroup,
+                    groupName = request.groupName,
+                    sender = request.sender,
+                    message = request.message,
+                    timestamp = request.timestamp
+                )
+            }
             
             result.fold(
                 onSuccess = { serverResponse ->
