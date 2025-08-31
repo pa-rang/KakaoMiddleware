@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Debug 빌드에서만 cleartext (HTTP) 통신 허용 -->
+    <debug-overrides>
+        <trust-anchors>
+            <!-- 기본 인증서 신뢰 -->
+            <certificates src="system"/>
+        </trust-anchors>
+    </debug-overrides>
+    
+    <!-- 로컬 개발 서버 도메인에 대한 cleartext 허용 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">192.168.10.190</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
+</network-security-config>
