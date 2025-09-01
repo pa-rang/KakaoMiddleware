@@ -11,6 +11,7 @@ import java.util.Calendar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 
 class AlarmReceiver : BroadcastReceiver() {
 
@@ -19,8 +20,18 @@ class AlarmReceiver : BroadcastReceiver() {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val formattedTime = sdf.format(Date(currentTime))
         
-        // 10분 간격 정확한 시각에 로그 찍기
-        Log.d("AlarmReceiver", "⏰ 10분 간격 알람 로그: $formattedTime")
+        // 예정된 시간과 실제 실행 시간 비교
+        val expectedTime = intent.getLongExtra("expectedTime", 0L)
+        val delay = if (expectedTime > 0) {
+            val delayMs = abs(currentTime - expectedTime)
+            val delaySeconds = delayMs / 1000.0
+            String.format("%.1f초", delaySeconds)
+        } else {
+            "N/A"
+        }
+        
+        // 10분 간격 정확한 시각에 로그 찍기 (지연 시간 포함)
+        Log.d("AlarmReceiver", "⏰ 10분 간격 알람 로그: $formattedTime (지연: $delay)")
         
         // 다음 알람을 다시 스케줄링
         scheduleNextAlarm(context)
@@ -31,14 +42,6 @@ class AlarmReceiver : BroadcastReceiver() {
 
         fun scheduleNextAlarm(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-            val intent = Intent(context, AlarmReceiver::class.java)
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                ALARM_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
 
             // 다음 10분 단위 시간 계산
             val calendar = Calendar.getInstance().apply {
@@ -54,13 +57,36 @@ class AlarmReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
             }
 
+            // 예정 시간을 Intent에 포함
+            val intent = Intent(context, AlarmReceiver::class.java).apply {
+                putExtra("expectedTime", calendar.timeInMillis)
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                ALARM_REQUEST_CODE,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
             val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val nextAlarmTime = sdf.format(Date(calendar.timeInMillis))
+            
+            // Android 12+ (API 31) 정확한 알람 권한 확인
+            val canScheduleExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                alarmManager.canScheduleExactAlarms()
+            } else {
+                true
+            }
+            
+            if (!canScheduleExact) {
+                Log.e("AlarmReceiver", "정확한 알람 권한 없음 - 설정에서 권한을 허용하세요")
+                return
+            }
             
             // Doze 모드와 앱 대기 모드에서도 정확한 시간에 알람이 동작하도록 설정
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    // Android 6.0 이상에서 Doze 모드 대응
+                    // Android 6.0 이상에서 Doze 모드 대응 + 더 정확한 알람
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         calendar.timeInMillis,
@@ -78,6 +104,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
             } catch (e: SecurityException) {
                 Log.e("AlarmReceiver", "알람 설정 권한 없음: ${e.message}")
+                Log.e("AlarmReceiver", "해결방법: 설정 > 앱 > KakaoMiddleware > 정확한 알람 허용")
             }
         }
 

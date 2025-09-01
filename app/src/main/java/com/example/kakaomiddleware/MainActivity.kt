@@ -3,6 +3,10 @@ package com.example.kakaomiddleware
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.app.AlarmManager
+import android.os.Build
+import android.net.Uri
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -33,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.StateFlow
 import com.example.kakaomiddleware.ui.theme.KakaoMiddlewareTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var allowlistManager: AllowlistManager
@@ -69,7 +74,7 @@ fun MainScreen(
     onOpenSettings: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Messages", "Allowlist", "Settings", "Alarm")
+    val tabs = listOf("Messages", "Allowlist", "Chat", "Settings", "Alarm")
     
     Column(modifier = modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = selectedTab) {
@@ -91,11 +96,14 @@ fun MainScreen(
                 modifier = Modifier.fillMaxSize(),
                 allowlistManager = allowlistManager
             )
-            2 -> ServerSettingsScreen(
+            2 -> ChatManagementScreen(
+                modifier = Modifier.fillMaxSize()
+            )
+            3 -> ServerSettingsScreen(
                 modifier = Modifier.fillMaxSize(),
                 serverConfigManager = serverConfigManager
             )
-            3 -> AlarmTestScreen(
+            4 -> AlarmTestScreen(
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -753,6 +761,16 @@ fun AlarmTestScreen(
     val context = LocalContext.current
     var isAlarmActive by remember { mutableStateOf(AlarmReceiver.isAlarmActive(context)) }
     
+    // 정확한 알람 권한 확인 (Android 12+)
+    val canScheduleExact = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.canScheduleExactAlarms()
+        } else {
+            true
+        }
+    }
+    
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -833,7 +851,7 @@ fun AlarmTestScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
-            enabled = !isAlarmActive
+            enabled = !isAlarmActive && canScheduleExact
         ) {
             Icon(
                 Icons.Default.PlayArrow,
@@ -864,6 +882,84 @@ fun AlarmTestScreen(
         
         Spacer(modifier = Modifier.height(24.dp))
         
+        // 권한 및 최적화 안내 (Android 12+ 또는 권한 없을 때만 표시)
+        if (!canScheduleExact || Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (canScheduleExact) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.errorContainer
+                    }
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = if (canScheduleExact) "⚡ 배터리 최적화 설정" else "⚠️ 권한 필요",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canScheduleExact) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        },
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    
+                    if (!canScheduleExact) {
+                        Text(
+                            text = "정확한 알람 권한이 필요합니다. 설정으로 이동하여 권한을 허용하세요.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        Button(
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                    context.startActivity(intent)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("정확한 알람 권한 설정")
+                        }
+                    } else {
+                        Text(
+                            text = "알람 지연을 최소화하려면:\n" +
+                                  "• 설정 > 앱 > KakaoMiddleware > 배터리 > 제한 없음\n" +
+                                  "• 설정 > 배터리 > 배터리 최적화 > KakaoMiddleware 제외",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        Button(
+                            onClick = {
+                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                context.startActivity(intent)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary
+                            )
+                        ) {
+                            Text("배터리 최적화 설정")
+                        }
+                    }
+                }
+            }
+        }
+        
         // 사용법 안내
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -885,10 +981,369 @@ fun AlarmTestScreen(
                     text = "1. 'Start 10-Minute Alarm' 버튼을 눌러 알람을 시작합니다.\n" +
                           "2. 매시 00, 10, 20, 30, 40, 50분에 정확히 로그가 출력됩니다.\n" +
                           "3. Android Studio의 Logcat에서 'AlarmReceiver' 태그로 확인할 수 있습니다.\n" +
+                          "   - adb logcat -s AlarmReceiver\n" +
                           "4. 앱이 종료되어도 알람은 백그라운드에서 계속 작동합니다.\n" +
-                          "5. 'Stop Alarm' 버튼으로 알람을 중지할 수 있습니다.",
+                          "5. 로그에서 지연 시간을 확인할 수 있습니다.\n" +
+                          "6. 'Stop Alarm' 버튼으로 알람을 중지할 수 있습니다.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ChatManagementScreen(
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val replyManager = remember { ReplyManager.getInstance(context) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    var availableChats by remember { mutableStateOf<List<ChatSummary>>(emptyList()) }
+    var selectedChatId by remember { mutableStateOf<String?>(null) }
+    var messageText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf("") }
+    var filterType by remember { mutableStateOf("All") }
+    
+    // 채팅방 목록 로드
+    LaunchedEffect(Unit) {
+        while (true) {
+            availableChats = replyManager.getAvailableChats()
+            delay(2000) // 2초마다 새로고침
+        }
+    }
+    
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // 헤더
+        Text(
+            text = "💬 Chat Management",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        // 통계 카드
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "📊 저장된 채팅방 컨텍스트",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                val groupChats = availableChats.filter { it.chatType == ChatContext.ChatType.GROUP }
+                val personalChats = availableChats.filter { it.chatType == ChatContext.ChatType.PERSONAL }
+                
+                Text(
+                    text = "전체: ${availableChats.size}개\n" +
+                          "👥 그룹 채팅: ${groupChats.size}개\n" +
+                          "👤 개인 채팅: ${personalChats.size}개",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+        
+        // 필터 버튼
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filterOptions = listOf("All", "Personal", "Group")
+            filterOptions.forEach { option ->
+                FilterChip(
+                    onClick = { filterType = option },
+                    label = { Text(option) },
+                    selected = filterType == option,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        
+        // 채팅방 목록
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val filteredChats = when (filterType) {
+                "Personal" -> availableChats.filter { it.chatType == ChatContext.ChatType.PERSONAL }
+                "Group" -> availableChats.filter { it.chatType == ChatContext.ChatType.GROUP }
+                else -> availableChats
+            }
+            
+            if (filteredChats.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "📭",
+                                style = MaterialTheme.typography.headlineLarge
+                            )
+                            Text(
+                                text = "저장된 채팅방 컨텍스트가 없습니다",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                            Text(
+                                text = "KakaoTalk에서 메시지를 주고받으면 채팅방 컨텍스트가 자동으로 저장됩니다",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(filteredChats) { chat ->
+                    ChatContextItem(
+                        chat = chat,
+                        isSelected = selectedChatId == chat.chatId,
+                        onClick = { selectedChatId = chat.chatId }
+                    )
+                }
+            }
+        }
+        
+        // 메시지 입력 및 전송 영역
+        if (selectedChatId != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    val selectedChat = availableChats.find { it.chatId == selectedChatId }
+                    
+                    Text(
+                        text = "📤 ${selectedChat?.displayName}에게 메시지 보내기",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    
+                    OutlinedTextField(
+                        value = messageText,
+                        onValueChange = { messageText = it },
+                        label = { Text("메시지 입력") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (messageText.isNotBlank() && !isLoading && selectedChatId != null) {
+                                    // 키보드 전송과 동일한 로직
+                                    isLoading = true
+                                    statusMessage = "📤 메시지 전송 중..."
+                                    
+                                    coroutineScope.launch {
+                                        try {
+                                            val currentMessage = messageText
+                                            val success = replyManager.sendMessageToChat(selectedChatId!!, currentMessage)
+                                            
+                                            isLoading = false
+                                            if (success) {
+                                                statusMessage = "✅ 메시지가 성공적으로 전송되었습니다!"
+                                                messageText = ""
+                                            } else {
+                                                statusMessage = "❌ 메시지 전송에 실패했습니다. 해당 채팅방에서 최근 메시지를 받은 후 다시 시도해주세요."
+                                            }
+                                            
+                                            delay(5000)
+                                            statusMessage = ""
+                                            
+                                        } catch (e: Exception) {
+                                            isLoading = false
+                                            statusMessage = "❌ 오류가 발생했습니다: ${e.message}"
+                                            
+                                            delay(5000)
+                                            statusMessage = ""
+                                        }
+                                    }
+                                }
+                            }
+                        ),
+                        maxLines = 3
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { 
+                                selectedChatId = null
+                                messageText = ""
+                                statusMessage = ""
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("취소")
+                        }
+                        
+                        Button(
+                            onClick = {
+                                if (messageText.isNotBlank() && !isLoading && selectedChatId != null) {
+                                    // 실제 메시지 전송 구현
+                                    isLoading = true
+                                    statusMessage = "📤 메시지 전송 중..."
+                                    
+                                    // 코루틴에서 비동기 메시지 전송
+                                    coroutineScope.launch {
+                                        try {
+                                            val currentMessage = messageText
+                                            val success = replyManager.sendMessageToChat(selectedChatId!!, currentMessage)
+                                            
+                                            isLoading = false
+                                            if (success) {
+                                                statusMessage = "✅ 메시지가 성공적으로 전송되었습니다!"
+                                                messageText = "" // 전송 성공 시 입력 필드 초기화
+                                            } else {
+                                                statusMessage = "❌ 메시지 전송에 실패했습니다. 해당 채팅방에서 최근 메시지를 받은 후 다시 시도해주세요."
+                                            }
+                                            
+                                            // 5초 후 상태 메시지 초기화
+                                            delay(5000)
+                                            statusMessage = ""
+                                            
+                                        } catch (e: Exception) {
+                                            isLoading = false
+                                            statusMessage = "❌ 오류가 발생했습니다: ${e.message}"
+                                            
+                                            // 5초 후 상태 메시지 초기화
+                                            delay(5000)
+                                            statusMessage = ""
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = messageText.isNotBlank() && !isLoading
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            } else {
+                                Text("전송")
+                            }
+                        }
+                    }
+                    
+                    if (statusMessage.isNotEmpty()) {
+                        Text(
+                            text = statusMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatContextItem(
+    chat: ChatSummary,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isSelected) {
+                    Modifier
+                } else {
+                    Modifier
+                }
+            ),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
+        border = if (isSelected) {
+            ButtonDefaults.outlinedButtonBorder
+        } else null
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = chat.displayName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "마지막 발신: ${chat.lastSender}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+                
+                Text(
+                    text = chat.formattedTime,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            if (isSelected) {
+                Text(
+                    text = "💡 메시지를 입력하고 전송 버튼을 눌러주세요",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 8.dp)
                 )
             }
         }

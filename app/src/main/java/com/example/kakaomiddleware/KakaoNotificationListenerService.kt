@@ -26,6 +26,7 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     private lateinit var serverRequestQueue: ServerRequestQueue
     private lateinit var remoteInputHijacker: RemoteInputHijacker
     private lateinit var allowlistManager: AllowlistManager
+    private lateinit var chatContextManager: ChatContextManager
     
     // 중복 메시지 방지를 위한 캐시 (sender+message를 키로 사용)
     private val recentMessagesCache = mutableSetOf<String>()
@@ -36,7 +37,8 @@ class KakaoNotificationListenerService : NotificationListenerService() {
         serverRequestQueue = ServerRequestQueue(this)
         remoteInputHijacker = RemoteInputHijacker(this)
         allowlistManager = AllowlistManager.getInstance(this)
-        Log.i(TAG, "NotificationListener connected")
+        chatContextManager = ChatContextManager(this)
+        Log.i(TAG, "NotificationListener connected with ChatContextManager")
     }
     
     /**
@@ -240,6 +242,15 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         is GroupMessage -> {
                             Log.d(TAG, "Group message: ${notif.groupName} - ${notif.sender}")
                             
+                            // 채팅방 컨텍스트 추출 및 저장 (모든 그룹 메시지에 대해)
+                            if (::chatContextManager.isInitialized) {
+                                chatContextManager.extractChatContextFromKakaoNotification(sbn, notif)
+                            }
+                            
+                            // 최신 StatusBarNotification 저장 (답장 기능용)
+                            val groupChatId = ChatContext.generateChatId(ChatContext.ChatType.GROUP, notif.groupName)
+                            NotificationStorage.storeNotification(groupChatId, sbn)
+                            
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
                                 allowlistManager.isTurboModeEnabled() || allowlistManager.isGroupAllowed(notif.groupName)
@@ -266,6 +277,15 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         }
                         is PersonalMessage -> {
                             Log.d(TAG, "Personal message: ${notif.sender}")
+                            
+                            // 채팅방 컨텍스트 추출 및 저장 (모든 개인 메시지에 대해)
+                            if (::chatContextManager.isInitialized) {
+                                chatContextManager.extractChatContextFromKakaoNotification(sbn, notif)
+                            }
+                            
+                            // 최신 StatusBarNotification 저장 (답장 기능용)
+                            val personalChatId = ChatContext.generateChatId(ChatContext.ChatType.PERSONAL, notif.sender)
+                            NotificationStorage.storeNotification(personalChatId, sbn)
                             
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
