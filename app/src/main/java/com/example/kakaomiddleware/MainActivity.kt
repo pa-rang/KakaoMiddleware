@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -68,7 +69,7 @@ fun MainScreen(
     onOpenSettings: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Messages", "Allowlist", "Settings")
+    val tabs = listOf("Messages", "Allowlist", "Settings", "Alarm")
     
     Column(modifier = modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = selectedTab) {
@@ -93,6 +94,9 @@ fun MainScreen(
             2 -> ServerSettingsScreen(
                 modifier = Modifier.fillMaxSize(),
                 serverConfigManager = serverConfigManager
+            )
+            3 -> AlarmTestScreen(
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
@@ -737,6 +741,155 @@ fun ServerSettingsScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AlarmTestScreen(
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var isAlarmActive by remember { mutableStateOf(AlarmReceiver.isAlarmActive(context)) }
+    
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Alarm Test",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        Text(
+            text = "10분 간격 알람 테스트 (00분, 10분, 20분, 30분, 40분, 50분)",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+        
+        // 알람 상태 카드
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isAlarmActive) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                }
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Alarm Status",
+                            modifier = Modifier.padding(end = 8.dp),
+                            tint = if (isAlarmActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                        Text(
+                            text = "Alarm Status",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = if (isAlarmActive) {
+                            "활성화됨 - 10분마다 로그가 출력됩니다"
+                        } else {
+                            "비활성화됨"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+        }
+        
+        // 알람 시작 버튼
+        Button(
+            onClick = {
+                AlarmReceiver.startPeriodicAlarm(context)
+                isAlarmActive = true
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            enabled = !isAlarmActive
+        ) {
+            Icon(
+                Icons.Default.PlayArrow,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Start 10-Minute Alarm")
+        }
+        
+        // 알람 정지 버튼
+        OutlinedButton(
+            onClick = {
+                AlarmReceiver.cancelAlarm(context)
+                isAlarmActive = false
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = isAlarmActive
+        ) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Stop Alarm")
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // 사용법 안내
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "사용법",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                Text(
+                    text = "1. 'Start 10-Minute Alarm' 버튼을 눌러 알람을 시작합니다.\n" +
+                          "2. 매시 00, 10, 20, 30, 40, 50분에 정확히 로그가 출력됩니다.\n" +
+                          "3. Android Studio의 Logcat에서 'AlarmReceiver' 태그로 확인할 수 있습니다.\n" +
+                          "4. 앱이 종료되어도 알람은 백그라운드에서 계속 작동합니다.\n" +
+                          "5. 'Stop Alarm' 버튼으로 알람을 중지할 수 있습니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
