@@ -37,6 +37,15 @@ object NotificationStorage {
             notificationCache[chatId] = sbn
             Log.d(TAG, "💾 Stored notification for: $chatId (total: ${notificationCache.size})")
             
+            // 영구 저장소에도 RemoteInput 정보 저장
+            try {
+                // Context가 필요하므로 Application Context 사용
+                // 이 부분은 KakaoNotificationListenerService에서 호출할 때 Context를 전달받도록 수정 필요
+                Log.v(TAG, "📝 RemoteInput info will be stored by caller")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not store to persistent storage (context needed)", e)
+            }
+            
         } catch (e: Exception) {
             Log.e(TAG, "Error storing notification for $chatId", e)
         }

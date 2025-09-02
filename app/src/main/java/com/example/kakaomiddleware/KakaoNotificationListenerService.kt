@@ -21,6 +21,12 @@ class KakaoNotificationListenerService : NotificationListenerService() {
         private const val TAG = "KakaoNotificationListener"
         private const val KAKAOTALK_PACKAGE = "com.kakao.talk"
         val notificationLog = mutableListOf<KakaoNotification>()
+        
+        // 서비스 인스턴스 정적 참조 (영구 저장소에서 활성 알림 접근용)
+        @Volatile
+        private var instance: KakaoNotificationListenerService? = null
+        
+        fun getInstance(): KakaoNotificationListenerService? = instance
     }
     
     private lateinit var serverRequestQueue: ServerRequestQueue
@@ -34,12 +40,14 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     
     override fun onListenerConnected() {
         super.onListenerConnected()
+        instance = this  // 정적 인스턴스 설정
         serverRequestQueue = ServerRequestQueue(this)
         remoteInputHijacker = RemoteInputHijacker(this)
         allowlistManager = AllowlistManager.getInstance(this)
         chatContextManager = ChatContextManager(this)
         Log.i(TAG, "NotificationListener connected with ChatContextManager")
     }
+    
     
     /**
      * 중복 메시지 확인 및 캐시 업데이트
@@ -251,6 +259,14 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                             val groupChatId = ChatContext.generateChatId(ChatContext.ChatType.GROUP, notif.groupName)
                             NotificationStorage.storeNotification(groupChatId, sbn)
                             
+                            // 영구 저장소에도 RemoteInput 정보 저장
+                            try {
+                                val persistentStorage = PersistentRemoteInputStorage.getInstance(this)
+                                persistentStorage.updateRemoteInputInfo(groupChatId, sbn)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to store RemoteInput info persistently", e)
+                            }
+                            
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
                                 allowlistManager.isTurboModeEnabled() || allowlistManager.isGroupAllowed(notif.groupName)
@@ -286,6 +302,14 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                             // 최신 StatusBarNotification 저장 (답장 기능용)
                             val personalChatId = ChatContext.generateChatId(ChatContext.ChatType.PERSONAL, notif.sender)
                             NotificationStorage.storeNotification(personalChatId, sbn)
+                            
+                            // 영구 저장소에도 RemoteInput 정보 저장
+                            try {
+                                val persistentStorage = PersistentRemoteInputStorage.getInstance(this)
+                                persistentStorage.updateRemoteInputInfo(personalChatId, sbn)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to store RemoteInput info persistently", e)
+                            }
                             
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
@@ -327,6 +351,7 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        instance = null  // 정적 인스턴스 해제
         if (::serverRequestQueue.isInitialized) {
             serverRequestQueue.shutdown()
         }

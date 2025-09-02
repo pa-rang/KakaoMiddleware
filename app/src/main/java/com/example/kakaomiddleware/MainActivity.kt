@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.StateFlow
 import com.example.kakaomiddleware.ui.theme.KakaoMiddlewareTheme
 import kotlinx.coroutines.delay
@@ -1262,6 +1263,155 @@ fun ChatManagementScreen(
                             } else {
                                 Text("전송")
                             }
+                        }
+                    }
+                    
+                    // 영구 저장소 전용 전송 버튼 (테스트용)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (messageText.isNotBlank() && !isLoading && selectedChatId != null) {
+                                    isLoading = true
+                                    statusMessage = "🔄 영구 저장소 기반 전송 중..."
+                                    
+                                    coroutineScope.launch {
+                                        try {
+                                            val currentMessage = messageText
+                                            val success = replyManager.sendMessageViaPersistentStorageOnly(selectedChatId!!, currentMessage)
+                                            
+                                            isLoading = false
+                                            if (success) {
+                                                statusMessage = "✅ 영구 저장소 기반 전송 성공!"
+                                                messageText = ""
+                                            } else {
+                                                statusMessage = "❌ 영구 저장소 기반 전송 실패. RemoteInput 정보를 확인해주세요."
+                                            }
+                                            
+                                            // 10초 후 상태 메시지 초기화 (디버깅용)
+                                            delay(10000)
+                                            statusMessage = ""
+                                            
+                                        } catch (e: Exception) {
+                                            isLoading = false
+                                            statusMessage = "❌ 영구 저장소 전송 오류: ${e.message}"
+                                            
+                                            delay(10000)
+                                            statusMessage = ""
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = messageText.isNotBlank() && !isLoading,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary
+                            )
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSecondary
+                                )
+                            } else {
+                                Text("🔄 영구저장소 전송", fontSize = 12.sp)
+                            }
+                        }
+                        
+                        // 영구 저장소 정보 확인 버튼
+                        OutlinedButton(
+                            onClick = {
+                                statusMessage = "🔍 영구 저장소 정보 확인 중..."
+                                
+                                coroutineScope.launch {
+                                    try {
+                                        val stats = replyManager.getPersistentStorageStats()
+                                        val availableChats = replyManager.getAvailableChatsFromPersistentStorage()
+                                        
+                                        statusMessage = "📊 영구저장소: 총 ${stats["totalRemoteInputs"]}개, 활성 ${stats["activeRemoteInputs"]}개, 전송가능 ${availableChats.size}개"
+                                        
+                                        delay(10000)
+                                        statusMessage = ""
+                                    } catch (e: Exception) {
+                                        statusMessage = "❌ 저장소 확인 오류: ${e.message}"
+                                        delay(5000)
+                                        statusMessage = ""
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("📊 저장소 확인", fontSize = 12.sp)
+                        }
+                    }
+                    
+                    // NotificationStorage 테스트 버튼 (테스트용)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                statusMessage = "🧹 NotificationStorage 초기화 중..."
+                                
+                                try {
+                                    NotificationStorage.clearAll()
+                                    statusMessage = "✅ NotificationStorage가 초기화되었습니다. 이제 영구 저장소만 사용 가능합니다."
+                                    
+                                    coroutineScope.launch {
+                                        delay(8000)
+                                        statusMessage = ""
+                                    }
+                                } catch (e: Exception) {
+                                    statusMessage = "❌ NotificationStorage 초기화 오류: ${e.message}"
+                                    
+                                    coroutineScope.launch {
+                                        delay(5000)
+                                        statusMessage = ""
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("🧹 알림캐시 초기화", fontSize = 11.sp)
+                        }
+                        
+                        OutlinedButton(
+                            onClick = {
+                                statusMessage = "📋 저장소 비교 확인 중..."
+                                
+                                coroutineScope.launch {
+                                    try {
+                                        // NotificationStorage 상태
+                                        NotificationStorage.logAllStoredNotifications()
+                                        val notificationStats = NotificationStorage.getCacheStats()
+                                        
+                                        // PersistentRemoteInputStorage 상태  
+                                        val persistentStorage = PersistentRemoteInputStorage.getInstance(context)
+                                        persistentStorage.logAllStoredRemoteInputs()
+                                        val persistentStats = replyManager.getPersistentStorageStats()
+                                        
+                                        statusMessage = "📋 알림캐시: ${notificationStats["totalCachedNotifications"]}개 | 영구저장소: ${persistentStats["activeRemoteInputs"]}개"
+                                        
+                                        delay(12000)
+                                        statusMessage = ""
+                                    } catch (e: Exception) {
+                                        statusMessage = "❌ 저장소 비교 오류: ${e.message}"
+                                        delay(5000)
+                                        statusMessage = ""
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("📋 저장소 비교", fontSize = 11.sp)
                         }
                     }
                     
