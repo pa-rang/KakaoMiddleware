@@ -1009,11 +1009,11 @@ fun ChatManagementScreen(
     var statusMessage by remember { mutableStateOf("") }
     var filterType by remember { mutableStateOf("All") }
     
-    // 채팅방 목록 로드
+    // 채팅방 목록 실시간 업데이트
     LaunchedEffect(Unit) {
         while (true) {
             availableChats = replyManager.getAvailableChats()
-            delay(60000) // 60초마다 새로고침
+            delay(5000) // 5초마다 새로고침 (더 반응적)
         }
     }
     
@@ -1024,7 +1024,7 @@ fun ChatManagementScreen(
     ) {
         // 헤더
         Text(
-            text = "💬 Chat Management",
+            text = "💬 채팅 관리",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 16.dp)
@@ -1043,7 +1043,7 @@ fun ChatManagementScreen(
                 modifier = Modifier.padding(16.dp)
             ) {
                 Text(
-                    text = "📊 저장된 채팅방 컨텍스트",
+                    text = "📊 채팅방 현황",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -1109,12 +1109,12 @@ fun ChatManagementScreen(
                                 style = MaterialTheme.typography.headlineLarge
                             )
                             Text(
-                                text = "저장된 채팅방 컨텍스트가 없습니다",
+                                text = "저장된 채팅방이 없습니다",
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.padding(top = 8.dp)
                             )
                             Text(
-                                text = "KakaoTalk에서 메시지를 주고받으면 채팅방 컨텍스트가 자동으로 저장됩니다",
+                                text = "KakaoTalk에서 메시지를 주고받으면 채팅방이 자동으로 등록됩니다",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp)
@@ -1149,7 +1149,7 @@ fun ChatManagementScreen(
                     val selectedChat = availableChats.find { it.chatId == selectedChatId }
                     
                     Text(
-                        text = "📤 ${selectedChat?.displayName}에게 메시지 보내기",
+                        text = "📤 ${selectedChat?.displayName}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 12.dp)
@@ -1166,9 +1166,9 @@ fun ChatManagementScreen(
                         keyboardActions = KeyboardActions(
                             onSend = {
                                 if (messageText.isNotBlank() && !isLoading && selectedChatId != null) {
-                                    // 키보드 전송과 동일한 로직
+                                    // 전송 버튼과 동일한 로직
                                     isLoading = true
-                                    statusMessage = "📤 메시지 전송 중..."
+                                    statusMessage = "🚀 메시지 전송 중..."
                                     
                                     coroutineScope.launch {
                                         try {
@@ -1177,20 +1177,20 @@ fun ChatManagementScreen(
                                             
                                             isLoading = false
                                             if (success) {
-                                                statusMessage = "✅ 메시지가 성공적으로 전송되었습니다!"
+                                                statusMessage = "✅ 전송 성공!"
                                                 messageText = ""
                                             } else {
-                                                statusMessage = "❌ 메시지 전송에 실패했습니다. 해당 채팅방에서 최근 메시지를 받은 후 다시 시도해주세요."
+                                                statusMessage = "❌ 전송 실패. 해당 채팅방에 새 메시지가 온 후 다시 시도해주세요."
                                             }
                                             
-                                            delay(5000)
+                                            delay(3000)
                                             statusMessage = ""
                                             
                                         } catch (e: Exception) {
                                             isLoading = false
-                                            statusMessage = "❌ 오류가 발생했습니다: ${e.message}"
+                                            statusMessage = "❌ 오류: ${e.message}"
                                             
-                                            delay(5000)
+                                            delay(3000)
                                             statusMessage = ""
                                         }
                                     }
@@ -1218,11 +1218,9 @@ fun ChatManagementScreen(
                         Button(
                             onClick = {
                                 if (messageText.isNotBlank() && !isLoading && selectedChatId != null) {
-                                    // 실제 메시지 전송 구현
                                     isLoading = true
-                                    statusMessage = "📤 메시지 전송 중..."
+                                    statusMessage = "🚀 메시지 전송 중..."
                                     
-                                    // 코루틴에서 비동기 메시지 전송
                                     coroutineScope.launch {
                                         try {
                                             val currentMessage = messageText
@@ -1230,22 +1228,20 @@ fun ChatManagementScreen(
                                             
                                             isLoading = false
                                             if (success) {
-                                                statusMessage = "✅ 메시지가 성공적으로 전송되었습니다!"
-                                                messageText = "" // 전송 성공 시 입력 필드 초기화
+                                                statusMessage = "✅ 전송 성공!"
+                                                messageText = ""
                                             } else {
-                                                statusMessage = "❌ 메시지 전송에 실패했습니다. 해당 채팅방에서 최근 메시지를 받은 후 다시 시도해주세요."
+                                                statusMessage = "❌ 전송 실패. 해당 채팅방에 새 메시지가 온 후 다시 시도해주세요."
                                             }
                                             
-                                            // 5초 후 상태 메시지 초기화
-                                            delay(5000)
+                                            delay(3000)
                                             statusMessage = ""
                                             
                                         } catch (e: Exception) {
                                             isLoading = false
-                                            statusMessage = "❌ 오류가 발생했습니다: ${e.message}"
+                                            statusMessage = "❌ 오류: ${e.message}"
                                             
-                                            // 5초 후 상태 메시지 초기화
-                                            delay(5000)
+                                            delay(3000)
                                             statusMessage = ""
                                         }
                                     }
@@ -1261,157 +1257,8 @@ fun ChatManagementScreen(
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
                             } else {
-                                Text("전송")
+                                Text("🚀 전송")
                             }
-                        }
-                    }
-                    
-                    // 영구 저장소 전용 전송 버튼 (테스트용)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                if (messageText.isNotBlank() && !isLoading && selectedChatId != null) {
-                                    isLoading = true
-                                    statusMessage = "🔄 영구 저장소 기반 전송 중..."
-                                    
-                                    coroutineScope.launch {
-                                        try {
-                                            val currentMessage = messageText
-                                            val success = replyManager.sendMessageViaPersistentStorageOnly(selectedChatId!!, currentMessage)
-                                            
-                                            isLoading = false
-                                            if (success) {
-                                                statusMessage = "✅ 영구 저장소 기반 전송 성공!"
-                                                messageText = ""
-                                            } else {
-                                                statusMessage = "❌ 영구 저장소 기반 전송 실패. RemoteInput 정보를 확인해주세요."
-                                            }
-                                            
-                                            // 10초 후 상태 메시지 초기화 (디버깅용)
-                                            delay(10000)
-                                            statusMessage = ""
-                                            
-                                        } catch (e: Exception) {
-                                            isLoading = false
-                                            statusMessage = "❌ 영구 저장소 전송 오류: ${e.message}"
-                                            
-                                            delay(10000)
-                                            statusMessage = ""
-                                        }
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            enabled = messageText.isNotBlank() && !isLoading,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondary
-                            )
-                        ) {
-                            if (isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onSecondary
-                                )
-                            } else {
-                                Text("🔄 영구저장소 전송", fontSize = 12.sp)
-                            }
-                        }
-                        
-                        // 영구 저장소 정보 확인 버튼
-                        OutlinedButton(
-                            onClick = {
-                                statusMessage = "🔍 영구 저장소 정보 확인 중..."
-                                
-                                coroutineScope.launch {
-                                    try {
-                                        val stats = replyManager.getPersistentStorageStats()
-                                        val availableChats = replyManager.getAvailableChatsFromPersistentStorage()
-                                        
-                                        statusMessage = "📊 영구저장소: 총 ${stats["totalRemoteInputs"]}개, 활성 ${stats["activeRemoteInputs"]}개, 전송가능 ${availableChats.size}개"
-                                        
-                                        delay(10000)
-                                        statusMessage = ""
-                                    } catch (e: Exception) {
-                                        statusMessage = "❌ 저장소 확인 오류: ${e.message}"
-                                        delay(5000)
-                                        statusMessage = ""
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("📊 저장소 확인", fontSize = 12.sp)
-                        }
-                    }
-                    
-                    // NotificationStorage 테스트 버튼 (테스트용)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                statusMessage = "🧹 NotificationStorage 초기화 중..."
-                                
-                                try {
-                                    NotificationStorage.clearAll()
-                                    statusMessage = "✅ NotificationStorage가 초기화되었습니다. 이제 영구 저장소만 사용 가능합니다."
-                                    
-                                    coroutineScope.launch {
-                                        delay(8000)
-                                        statusMessage = ""
-                                    }
-                                } catch (e: Exception) {
-                                    statusMessage = "❌ NotificationStorage 초기화 오류: ${e.message}"
-                                    
-                                    coroutineScope.launch {
-                                        delay(5000)
-                                        statusMessage = ""
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("🧹 알림캐시 초기화", fontSize = 11.sp)
-                        }
-                        
-                        OutlinedButton(
-                            onClick = {
-                                statusMessage = "📋 저장소 비교 확인 중..."
-                                
-                                coroutineScope.launch {
-                                    try {
-                                        // NotificationStorage 상태
-                                        NotificationStorage.logAllStoredNotifications()
-                                        val notificationStats = NotificationStorage.getCacheStats()
-                                        
-                                        // PersistentRemoteInputStorage 상태  
-                                        val persistentStorage = PersistentRemoteInputStorage.getInstance(context)
-                                        persistentStorage.logAllStoredRemoteInputs()
-                                        val persistentStats = replyManager.getPersistentStorageStats()
-                                        
-                                        statusMessage = "📋 알림캐시: ${notificationStats["totalCachedNotifications"]}개 | 영구저장소: ${persistentStats["activeRemoteInputs"]}개"
-                                        
-                                        delay(12000)
-                                        statusMessage = ""
-                                    } catch (e: Exception) {
-                                        statusMessage = "❌ 저장소 비교 오류: ${e.message}"
-                                        delay(5000)
-                                        statusMessage = ""
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("📋 저장소 비교", fontSize = 11.sp)
                         }
                     }
                     

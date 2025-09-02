@@ -259,13 +259,6 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                             val groupChatId = ChatContext.generateChatId(ChatContext.ChatType.GROUP, notif.groupName)
                             NotificationStorage.storeNotification(groupChatId, sbn)
                             
-                            // 영구 저장소에도 RemoteInput 정보 저장
-                            try {
-                                val persistentStorage = PersistentRemoteInputStorage.getInstance(this)
-                                persistentStorage.updateRemoteInputInfo(groupChatId, sbn)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to store RemoteInput info persistently", e)
-                            }
                             
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
@@ -303,13 +296,6 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                             val personalChatId = ChatContext.generateChatId(ChatContext.ChatType.PERSONAL, notif.sender)
                             NotificationStorage.storeNotification(personalChatId, sbn)
                             
-                            // 영구 저장소에도 RemoteInput 정보 저장
-                            try {
-                                val persistentStorage = PersistentRemoteInputStorage.getInstance(this)
-                                persistentStorage.updateRemoteInputInfo(personalChatId, sbn)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to store RemoteInput info persistently", e)
-                            }
                             
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {

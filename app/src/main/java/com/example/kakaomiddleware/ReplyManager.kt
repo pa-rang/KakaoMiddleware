@@ -1,18 +1,19 @@
 package com.example.kakaomiddleware
 
-import android.app.PendingIntent
-import android.app.RemoteInput
 import android.content.Context
-import android.content.Intent
-import android.os.Bundle
 import android.service.notification.StatusBarNotification
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 저장된 채팅방 컨텍스트를 이용하여 임의 답장을 보내는 관리자
- * ChatRepository에 저장된 RemoteInput 정보를 활용하여 KakaoTalk 채팅방에 메시지 전송
+ * KakaoTalk 메시지 전송 관리자
+ * 
+ * 단일화된 메시지 전송 로직:
+ * 1. 메모리 캐시(NotificationStorage)에서 StatusBarNotification 탐색
+ * 2. 활성 알림에서 직접 탐색 후 자동 캐시에 저장
+ * 
+ * ChatRepository와 NotificationStorage를 통합하여 안정적이고 빠른 메시지 전송 제공
  */
 class ReplyManager private constructor(private val context: Context) {
     
@@ -35,45 +36,52 @@ class ReplyManager private constructor(private val context: Context) {
     private val chatRepository = ChatRepository.getInstance(context)
     
     /**
-     * 특정 채팅방에 메시지 발송
+     * 특정 채팅방에 메시지 발송 (단일화된 로직)
+     * 1단계: 메모리 캐시에서 알림 탐색
+     * 2단계: 활성 알림에서 탐색 후 캐시에 저장
      * @param chatId 채팅방 ID (예: "personal_홍길동", "group_개발팀")
      * @param message 발송할 메시지
      * @return 발송 성공 여부
      */
     suspend fun sendMessageToChat(chatId: String, message: String): Boolean {
-        return withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.Main) {
             try {
-                val chatContext = chatRepository.getChatContext(chatId)
-                if (chatContext == null || !chatContext.isActive) {
-                    Log.e(TAG, "❌ Chat context not found or inactive: $chatId")
-                    return@withContext false
+                Log.d(TAG, "🚀 Attempting to send message to $chatId: '$message'")
+                
+                // 1단계: 메모리 캐시에서 찾기 (가장 빠름)
+                val cachedNotification = NotificationStorage.getLatestNotification(chatId)
+                if (cachedNotification != null) {
+                    Log.d(TAG, "✅ Using cached notification for $chatId")
+                    val success = sendViaRemoteInput(cachedNotification, message)
+                    if (success) {
+                        updateSentMessageStats(chatId)
+                        Log.d(TAG, "✅ Message sent successfully via cache to $chatId")
+                    }
+                    return@withContext success
                 }
                 
-                Log.d(TAG, "🚀 Attempting to send message to ${chatContext.displayName}: '$message'")
-                
-                // ⚠️ 핵심 제약사항: 
-                // PendingIntent는 원본 StatusBarNotification에서만 유효하며,
-                // 시간이 지나면 무효화될 수 있음
-                // 
-                // 현재 구현은 개념 증명용이며, 실제로는 더 복잡한 접근이 필요할 수 있음
-                
-                val success = sendRemoteInputMessage(chatContext, message)
-                
-                if (success) {
-                    Log.d(TAG, "✅ Message sent successfully to $chatId")
-                    
-                    // 성공적으로 전송된 경우 통계 업데이트
-                    updateSentMessageStats(chatContext)
-                    
-                } else {
-                    Log.e(TAG, "❌ Failed to send message to $chatId")
+                // 2단계: 활성 알림에서 찾기 (폴백)
+                Log.d(TAG, "🔍 No cached notification, searching active notifications...")
+                val activeNotification = findActiveNotificationForChat(chatId)
+                if (activeNotification != null) {
+                    Log.d(TAG, "✅ Found active notification, caching for future use")
+                    NotificationStorage.storeNotification(chatId, activeNotification)
+                    val success = sendViaRemoteInput(activeNotification, message)
+                    if (success) {
+                        updateSentMessageStats(chatId)
+                        Log.d(TAG, "✅ Message sent successfully via active notification to $chatId")
+                    }
+                    return@withContext success
                 }
                 
-                success
+                // 실패: 활성 알림이 없으면 전송 불가
+                Log.w(TAG, "❌ No notification available for chat: $chatId")
+                Log.w(TAG, "   해당 채팅방에 새 메시지가 오면 답장을 보낼 수 있습니다.")
+                return@withContext false
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending message to chat: $chatId", e)
-                false
+                return@withContext false
             }
         }
     }
@@ -162,107 +170,60 @@ class ReplyManager private constructor(private val context: Context) {
     }
     
     /**
-     * RemoteInput을 이용한 실제 메시지 전송
-     * 최신 StatusBarNotification을 이용해 실제 RemoteInput 하이재킹 수행
+     * 활성 알림에서 직접 채팅방 알림 찾기
+     * @param chatId 채팅방 ID
+     * @return 해당하는 StatusBarNotification (없으면 null)
      */
-    private suspend fun sendRemoteInputMessage(chatContext: ChatContext, message: String): Boolean {
-        return withContext(Dispatchers.Main) {
-            try {
-                Log.d(TAG, "🔧 Attempting RemoteInput message injection")
-                Log.d(TAG, "   - Chat: ${chatContext.displayName}")
-                Log.d(TAG, "   - Key: ${chatContext.remoteInputKey}")
-                Log.d(TAG, "   - Message: '$message'")
-                
-                // 전략: ChatContextStorage에서 최신 알림을 가져와서 실시간 하이재킹
-                val latestNotification = getLatestNotificationForChat(chatContext.chatId)
-                
-                if (latestNotification != null) {
-                    // 공통 메시지 전송 로직 사용
-                    val success = sendMessageViaStatusBarNotification(latestNotification, message, "NotificationStorage")
-                    return@withContext success
-                } else {
-                    // 최신 알림이 없는 경우 - 영구 저장소 기반 전송 시도 (개선된 로직 사용)
-                    Log.w(TAG, "⚠️ No recent notification available for ${chatContext.chatId}")
-                    Log.i(TAG, "🔄 Attempting message send via persistent storage fallback")
-                    
-                    val persistentSuccess = sendMessageViaPersistentStorageOnly(chatContext.chatId, message)
-                    
-                    if (persistentSuccess) {
-                        Log.d(TAG, "✅ Successfully sent message via persistent storage fallback")
-                        return@withContext true
-                    } else {
-                        Log.w(TAG, "❌ Both notification hijacking and persistent storage failed")
-                        Log.w(TAG, "   해당 채팅방에 새 메시지가 오면 답장을 보낼 수 있습니다.")
-                        return@withContext false
-                    }
-                }
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in sendRemoteInputMessage", e)
-                return@withContext false
+    private fun findActiveNotificationForChat(chatId: String): StatusBarNotification? {
+        return try {
+            Log.d(TAG, "🔍 Searching active notifications for chat: $chatId")
+            
+            // ChatRepository에서 채팅방 정보 찾기
+            val chatContext = chatRepository.getChatContext(chatId)
+            if (chatContext == null) {
+                Log.w(TAG, "❌ No chat context found for: $chatId")
+                return null
             }
+            
+            val chatName = chatContext.chatName
+            Log.d(TAG, "   - Chat name: $chatName")
+            
+            // 활성 알림에서 찾기
+            val listenerService = KakaoNotificationListenerService.getInstance()
+            if (listenerService == null) {
+                Log.w(TAG, "❌ NotificationListenerService not available")
+                return null
+            }
+            
+            val activeNotification = ActiveNotificationFinder.findActiveNotificationForChat(
+                listenerService,
+                chatId,
+                chatName
+            )
+            
+            if (activeNotification != null) {
+                Log.d(TAG, "✅ Found active notification for: $chatName")
+            } else {
+                Log.w(TAG, "❌ No active notification found for: $chatName")
+            }
+            
+            return activeNotification
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error finding active notification for $chatId", e)
+            return null
         }
     }
     
     /**
-     * 특정 채팅방의 최신 StatusBarNotification 조회
-     * NotificationStorage에서 캐시된 최신 알림을 가져옴
-     */
-    private fun getLatestNotificationForChat(chatId: String): StatusBarNotification? {
-        Log.d(TAG, "🔍 Looking for latest notification for chat: $chatId")
-        
-        // 현재 저장된 모든 알림 로그 출력 (디버깅용)
-        NotificationStorage.logAllStoredNotifications()
-        
-        val notification = NotificationStorage.getLatestNotification(chatId)
-        
-        if (notification != null) {
-            Log.d(TAG, "✅ Found cached notification for: $chatId")
-            
-            // 알림이 너무 오래된 경우 경고 (5분 이상)
-            val ageMinutes = (System.currentTimeMillis() - notification.postTime) / (60 * 1000)
-            if (ageMinutes > 5) {
-                Log.w(TAG, "⚠️ Notification is $ageMinutes minutes old - may be invalid")
-            }
-            
-        } else {
-            Log.w(TAG, "❌ No cached notification for: $chatId")
-            
-            // 영구 저장소에서 RemoteInput 정보 확인
-            try {
-                val persistentStorage = PersistentRemoteInputStorage.getInstance(context)
-                val remoteInputInfo = persistentStorage.getRemoteInputInfo(chatId)
-                
-                if (remoteInputInfo != null) {
-                    Log.i(TAG, "📝 Found persistent RemoteInput info for: $chatId (infinite retention)")
-                    Log.i(TAG, "   - Age: ${remoteInputInfo.ageMinutes}분 (${remoteInputInfo.formattedTime})")
-                    Log.i(TAG, "   - RemoteInputKey: ${remoteInputInfo.remoteInputKey}")
-                    Log.i(TAG, "   - Status: Always valid (no expiration)")
-                    
-                    // 영구 저장소의 모든 정보도 로그 출력
-                    persistentStorage.logAllStoredRemoteInputs()
-                } else {
-                    Log.w(TAG, "   영구 저장소에도 RemoteInput 정보가 없습니다.")
-                    Log.w(TAG, "   해당 채팅방에서 메시지를 받은 후 답장을 시도해주세요.")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking persistent RemoteInput storage", e)
-            }
-        }
-        
-        return notification
-    }
-    
-    /**
-     * StatusBarNotification을 사용한 공통 메시지 전송 로직
+     * RemoteInput을 이용한 실제 메시지 전송 (공통 로직)
      * @param sbn StatusBarNotification 객체
      * @param message 전송할 메시지
-     * @param source 전송 소스 (로깅용)
      * @return 전송 성공 여부
      */
-    private fun sendMessageViaStatusBarNotification(sbn: StatusBarNotification, message: String, source: String): Boolean {
+    private fun sendViaRemoteInput(sbn: StatusBarNotification, message: String): Boolean {
         return try {
-            Log.d(TAG, "🔧 Sending message via $source")
+            Log.d(TAG, "🔧 Sending message via RemoteInput")
             Log.d(TAG, "   - Message: '$message'")
             Log.d(TAG, "   - Notification key: ${sbn.key}")
             Log.d(TAG, "   - Post time: ${sbn.postTime}")
@@ -271,114 +232,47 @@ class ReplyManager private constructor(private val context: Context) {
             val success = remoteInputHijacker.injectResponse(sbn, message)
             
             if (success) {
-                Log.d(TAG, "✅ Successfully sent message via $source")
+                Log.d(TAG, "✅ Message sent successfully via RemoteInput")
             } else {
-                Log.e(TAG, "❌ Message send failed via $source")
+                Log.e(TAG, "❌ RemoteInput message send failed")
             }
             
             success
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error sending message via $source", e)
+            Log.e(TAG, "Error sending message via RemoteInput", e)
             false
         }
     }
     
-    /**
-     * 영구 저장소만을 사용한 메시지 전송 (NotificationStorage 무시)
-     * @param chatId 채팅방 ID
-     * @param message 전송할 메시지
-     * @return 전송 성공 여부
-     */
-    suspend fun sendMessageViaPersistentStorageOnly(chatId: String, message: String): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                Log.d(TAG, "🔄 Attempting PERSISTENT STORAGE based message send")
-                Log.d(TAG, "   - ChatId: $chatId")
-                Log.d(TAG, "   - Message: '$message'")
-                
-                // 1. 먼저 NotificationStorage에서 캐시된 알림 확인
-                val cachedNotification = NotificationStorage.getLatestNotification(chatId)
-                if (cachedNotification != null) {
-                    Log.d(TAG, "✅ Found cached notification, using it directly")
-                    val success = sendMessageViaStatusBarNotification(cachedNotification, message, "PersistentStorage-Cached")
-                    return@withContext success
-                }
-                
-                // 2. 캐시에 없으면 영구 저장소에서 정보 조회
-                val persistentStorage = PersistentRemoteInputStorage.getInstance(context)
-                val remoteInputInfo = persistentStorage.getRemoteInputInfo(chatId)
-                
-                if (remoteInputInfo == null) {
-                    Log.w(TAG, "❌ No RemoteInput info found for: $chatId")
-                    return@withContext false
-                }
-                
-                Log.d(TAG, "✅ Found RemoteInput info: ${remoteInputInfo.displayName}")
-                
-                // 3. 활성 알림에서 해당 채팅방 알림 찾기
-                val listenerService = KakaoNotificationListenerService.getInstance()
-                if (listenerService == null) {
-                    Log.w(TAG, "❌ NotificationListenerService not available")
-                    return@withContext false
-                }
-                
-                val activeNotification = ActiveNotificationFinder.findActiveNotificationForChat(
-                    listenerService,
-                    remoteInputInfo.chatId,
-                    remoteInputInfo.chatName
-                )
-                
-                if (activeNotification == null) {
-                    Log.w(TAG, "❌ No active notification found for: ${remoteInputInfo.chatName}")
-                    return@withContext false
-                }
-                
-                Log.d(TAG, "✅ Found active notification, caching it for reuse")
-                
-                // 4. 활성 알림을 NotificationStorage에 저장 (연속 전송 지원)
-                NotificationStorage.storeNotification(chatId, activeNotification)
-                
-                // 5. 이제 캐시된 알림으로 전송 (일반 전송과 동일한 방식)
-                val success = sendMessageViaStatusBarNotification(activeNotification, message, "PersistentStorage-Active")
-                
-                if (success) {
-                    Log.d(TAG, "✅ Persistent storage message send successful")
-                } else {
-                    Log.e(TAG, "❌ Persistent storage message send failed")
-                }
-                
-                return@withContext success
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in sendMessageViaPersistentStorageOnly", e)
-                return@withContext false
-            }
-        }
-    }
+    
     
     /**
-     * 영구 저장소에서 사용 가능한 채팅방 목록 조회
+     * 데이터베이스에서 사용 가능한 채팅방 목록 조회
      */
-    fun getAvailableChatsFromPersistentStorage(): List<RemoteInputInfo> {
+    fun getAvailableChatsFromStorage(): List<ChatSummary> {
         return try {
-            val persistentReplyManager = PersistentReplyManager(context)
-            persistentReplyManager.getAvailableChatsFromStorage()
+            getAvailableChats() // 이미 ChatRepository를 사용하는 기존 메서드
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting available chats from persistent storage", e)
+            Log.e(TAG, "Error getting available chats from storage", e)
             emptyList()
         }
     }
     
     /**
-     * 영구 저장소 통계 정보 조회
+     * 저장소 통계 정보 조회 (데이터베이스 기반)
      */
-    fun getPersistentStorageStats(): Map<String, Int> {
+    fun getStorageStats(): Map<String, Int> {
         return try {
-            val persistentReplyManager = PersistentReplyManager(context)
-            persistentReplyManager.getStorageStats()
+            val availableChats = getAvailableChats()
+            val activeChats = availableChats // ChatRepository에서 가져오는 것은 모두 활성 상태
+            
+            mapOf(
+                "totalRemoteInputs" to availableChats.size,
+                "activeRemoteInputs" to activeChats.size
+            )
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting persistent storage stats", e)
+            Log.e(TAG, "Error getting storage stats", e)
             emptyMap()
         }
     }
@@ -386,15 +280,20 @@ class ReplyManager private constructor(private val context: Context) {
     /**
      * 전송 성공 통계 업데이트 (향후 분석용)
      */
-    private fun updateSentMessageStats(chatContext: ChatContext) {
-        // SharedPreferences에 통계 저장
-        val statsPrefs = context.getSharedPreferences("reply_stats", Context.MODE_PRIVATE)
-        val currentCount = statsPrefs.getInt("sent_${chatContext.chatId}", 0)
-        
-        statsPrefs.edit()
-            .putInt("sent_${chatContext.chatId}", currentCount + 1)
-            .putLong("last_sent_${chatContext.chatId}", System.currentTimeMillis())
-            .apply()
+    private fun updateSentMessageStats(chatId: String) {
+        try {
+            val statsPrefs = context.getSharedPreferences("reply_stats", Context.MODE_PRIVATE)
+            val currentCount = statsPrefs.getInt("sent_$chatId", 0)
+            
+            statsPrefs.edit()
+                .putInt("sent_$chatId", currentCount + 1)
+                .putLong("last_sent_$chatId", System.currentTimeMillis())
+                .apply()
+                
+            Log.v(TAG, "Updated stats for $chatId: ${currentCount + 1} messages sent")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update stats for $chatId", e)
+        }
     }
     
     /**
