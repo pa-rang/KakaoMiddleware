@@ -36,6 +36,9 @@ class ChatRepository private constructor(private val context: Context) {
     // 메모리 캐시로 빠른 접근 제공
     private val chatContextsCache = mutableMapOf<String, ChatContext>()
     
+    // 이전 컨텍스트 개수 저장 (변경 감지용)
+    private var previousContextCount = 0
+    
     init {
         Log.d(TAG, "ChatRepository initialized")
         // 앱 시작 시 캐시 pre-loading
@@ -129,7 +132,11 @@ class ChatRepository private constructor(private val context: Context) {
                 }
             }
             
-            Log.d(TAG, "📋 Loaded ${allContexts.size} active chat contexts")
+            // 변경사항이 있을 때만 로그 출력
+            if (allContexts.size != previousContextCount) {
+                Log.v(TAG, "📋 Chat contexts updated: ${previousContextCount} → ${allContexts.size} active contexts")
+                previousContextCount = allContexts.size
+            }
             
         } catch (e: Exception) {
             Log.e(TAG, "Error loading all chat contexts", e)

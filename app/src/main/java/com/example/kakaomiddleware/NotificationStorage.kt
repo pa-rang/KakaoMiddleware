@@ -109,6 +109,79 @@ object NotificationStorage {
     }
     
     /**
+     * 현재 저장된 모든 StatusBarNotification 객체들을 로그로 출력 (디버깅용)
+     */
+    fun logAllStoredNotifications() {
+        try {
+            Log.d(TAG, "📋 === NotificationStorage Debug Info ===")
+            Log.d(TAG, "📊 Total cached notifications: ${notificationCache.size}")
+            Log.d(TAG, "📊 Max cache size: $MAX_CACHED_NOTIFICATIONS")
+            
+            if (notificationCache.isEmpty()) {
+                Log.d(TAG, "🔍 No notifications currently stored in cache")
+                return
+            }
+            
+            notificationCache.forEach { (chatId, sbn) ->
+                Log.d(TAG, "📱 ChatId: $chatId")
+                Log.d(TAG, "  ├─ PackageName: ${sbn.packageName}")
+                Log.d(TAG, "  ├─ PostTime: ${sbn.postTime} (${getTimeAgo(sbn.postTime)} ago)")
+                Log.d(TAG, "  ├─ Key: ${sbn.key}")
+                Log.d(TAG, "  ├─ Tag: ${sbn.tag}")
+                Log.d(TAG, "  ├─ Id: ${sbn.id}")
+                
+                // Notification 내용 확인
+                val notification = sbn.notification
+                Log.d(TAG, "  ├─ Notification extras:")
+                Log.d(TAG, "  │   ├─ Title: ${notification.extras?.getString("android.title")}")
+                Log.d(TAG, "  │   ├─ Text: ${notification.extras?.getString("android.text")}")
+                Log.d(TAG, "  │   ├─ SubText: ${notification.extras?.getString("android.subText")}")
+                Log.d(TAG, "  │   └─ IsGroupConversation: ${notification.extras?.getBoolean("android.isGroupConversation", false)}")
+                
+                // Actions (RemoteInput 확인)
+                val actions = notification.actions
+                if (actions != null && actions.isNotEmpty()) {
+                    Log.d(TAG, "  ├─ Actions: ${actions.size} found")
+                    actions.forEachIndexed { index, action ->
+                        Log.d(TAG, "  │   ├─ Action[$index]: ${action.title}")
+                        val remoteInputs = action.remoteInputs
+                        if (remoteInputs != null && remoteInputs.isNotEmpty()) {
+                            remoteInputs.forEachIndexed { riIndex, ri ->
+                                Log.d(TAG, "  │   │   └─ RemoteInput[$riIndex]: key='${ri.resultKey}', label='${ri.label}'")
+                            }
+                        } else {
+                            Log.d(TAG, "  │   │   └─ No RemoteInputs")
+                        }
+                    }
+                } else {
+                    Log.d(TAG, "  └─ No Actions found")
+                }
+                Log.d(TAG, "  ")
+            }
+            Log.d(TAG, "📋 === End of NotificationStorage Debug ===")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error logging stored notifications", e)
+        }
+    }
+    
+    /**
+     * 시간 경과를 사람이 읽기 쉬운 형태로 반환
+     */
+    private fun getTimeAgo(postTime: Long): String {
+        val currentTime = System.currentTimeMillis()
+        val diffMs = currentTime - postTime
+        
+        return when {
+            diffMs < 1000 -> "방금 전"
+            diffMs < 60 * 1000 -> "${diffMs / 1000}초"
+            diffMs < 60 * 60 * 1000 -> "${diffMs / (60 * 1000)}분"
+            diffMs < 24 * 60 * 60 * 1000 -> "${diffMs / (60 * 60 * 1000)}시간"
+            else -> "${diffMs / (24 * 60 * 60 * 1000)}일"
+        }
+    }
+    
+    /**
      * 오래된 알림 정리 (5분 이상 된 알림은 무효할 가능성이 높음)
      */
     fun cleanupOldNotifications() {

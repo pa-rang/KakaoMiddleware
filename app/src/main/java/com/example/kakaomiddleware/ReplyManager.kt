@@ -209,6 +209,9 @@ class ReplyManager private constructor(private val context: Context) {
     private fun getLatestNotificationForChat(chatId: String): StatusBarNotification? {
         Log.d(TAG, "🔍 Looking for latest notification for chat: $chatId")
         
+        // 현재 저장된 모든 알림 로그 출력 (디버깅용)
+        NotificationStorage.logAllStoredNotifications()
+        
         val notification = NotificationStorage.getLatestNotification(chatId)
         
         if (notification != null) {

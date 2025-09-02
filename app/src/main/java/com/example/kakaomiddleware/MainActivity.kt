@@ -1012,7 +1012,7 @@ fun ChatManagementScreen(
     LaunchedEffect(Unit) {
         while (true) {
             availableChats = replyManager.getAvailableChats()
-            delay(2000) // 2초마다 새로고침
+            delay(60000) // 60초마다 새로고침
         }
     }
     
