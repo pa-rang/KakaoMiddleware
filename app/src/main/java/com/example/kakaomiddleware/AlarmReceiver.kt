@@ -94,13 +94,16 @@ class AlarmReceiver : BroadcastReceiver() {
         }
 
         fun startPeriodicAlarm(context: Context) {
+            Log.d(TAG, "🔧 알람 시작 요청 처리 중...")
+            
             // 기존 알람이 있으면 먼저 취소
             cancelAlarm(context)
             
             // 새 알람 스케줄링 시작
             scheduleNextAlarm(context)
             
-            Log.d(TAG, "🚀 10분 간격 주기적 알람이 시작되었습니다.")
+            Log.i(TAG, "🚀 10분 간격 주기적 알람이 시작되었습니다.")
+            Log.i(TAG, "📅 다음 알람은 매시 00, 10, 20, 30, 40, 50분에 실행됩니다.")
         }
 
         fun cancelAlarm(context: Context) {

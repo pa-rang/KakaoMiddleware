@@ -49,6 +49,10 @@ class MainActivity : ComponentActivity() {
         allowlistManager = AllowlistManager.getInstance(this)
         serverConfigManager = ServerConfigManager.getInstance(this)
         enableEdgeToEdge()
+        
+        // 앱 시작 시 알람 자동 시작
+        initializeAlarm()
+        
         setContent {
             KakaoMiddlewareTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -63,6 +67,31 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+    
+    private fun initializeAlarm() {
+        android.util.Log.d("MainActivity", "🔄 앱 시작 시 알람 초기화 중...")
+        
+        // 정확한 알람 권한 확인
+        val canScheduleExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.canScheduleExactAlarms()
+        } else {
+            true
+        }
+        
+        val isAlarmActive = AlarmReceiver.isAlarmActive(this)
+        
+        android.util.Log.d("MainActivity", "   권한: $canScheduleExact, 활성화: $isAlarmActive")
+        
+        if (!isAlarmActive && canScheduleExact) {
+            android.util.Log.d("MainActivity", "🚀 앱 시작 시 알람 자동 시작...")
+            AlarmReceiver.startPeriodicAlarm(this)
+        } else if (!canScheduleExact) {
+            android.util.Log.w("MainActivity", "⚠️ 정확한 알람 권한 없음")
+        } else {
+            android.util.Log.d("MainActivity", "ℹ️ 알람이 이미 실행 중")
         }
     }
 }
@@ -769,6 +798,24 @@ fun AlarmTestScreen(
             alarmManager.canScheduleExactAlarms()
         } else {
             true
+        }
+    }
+    
+    // 앱이 시작될 때 자동으로 알람 시작
+    LaunchedEffect(Unit) {
+        android.util.Log.d("AlarmTestScreen", "🔍 알람 상태 확인 중...")
+        android.util.Log.d("AlarmTestScreen", "   isAlarmActive: $isAlarmActive")
+        android.util.Log.d("AlarmTestScreen", "   canScheduleExact: $canScheduleExact")
+        
+        if (!isAlarmActive && canScheduleExact) {
+            android.util.Log.d("AlarmTestScreen", "🚀 알람 자동 시작 중...")
+            AlarmReceiver.startPeriodicAlarm(context)
+            isAlarmActive = true
+            android.util.Log.d("AlarmTestScreen", "✅ 알람 자동 시작 완료")
+        } else if (!canScheduleExact) {
+            android.util.Log.w("AlarmTestScreen", "⚠️ 정확한 알람 권한이 없어서 자동 시작하지 않음")
+        } else {
+            android.util.Log.d("AlarmTestScreen", "ℹ️ 알람이 이미 활성화되어 있음")
         }
     }
     
