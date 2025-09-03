@@ -202,9 +202,12 @@ class CronApiService(private val context: Context) {
         for (i in 0 until messagesArray.length()) {
             try {
                 val messageObj = messagesArray.getJSONObject(i)
+                
+                // 서버 응답 스키마에 맞게 필드명 수정
+                // chatRoomName -> chatId, messageContent -> message로 매핑
                 val cronMessage = CronMessage(
-                    chatId = messageObj.getString("chatId"),
-                    message = messageObj.getString("message"),
+                    chatId = messageObj.getString("chatRoomName"),  // chatRoomName을 chatId로 매핑
+                    message = messageObj.getString("messageContent"),  // messageContent를 message로 매핑
                     messageType = messageObj.optString("messageType", "text")
                 )
                 messages.add(cronMessage)
