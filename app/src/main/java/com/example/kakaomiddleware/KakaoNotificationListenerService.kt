@@ -21,11 +21,18 @@ class KakaoNotificationListenerService : NotificationListenerService() {
         private const val TAG = "KakaoNotificationListener"
         private const val KAKAOTALK_PACKAGE = "com.kakao.talk"
         val notificationLog = mutableListOf<KakaoNotification>()
+        
+        // 서비스 인스턴스 정적 참조 (영구 저장소에서 활성 알림 접근용)
+        @Volatile
+        private var instance: KakaoNotificationListenerService? = null
+        
+        fun getInstance(): KakaoNotificationListenerService? = instance
     }
     
     private lateinit var serverRequestQueue: ServerRequestQueue
     private lateinit var remoteInputHijacker: RemoteInputHijacker
     private lateinit var allowlistManager: AllowlistManager
+    private lateinit var chatContextManager: ChatContextManager
     
     // 중복 메시지 방지를 위한 캐시 (sender+message를 키로 사용)
     private val recentMessagesCache = mutableSetOf<String>()
@@ -33,11 +40,14 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     
     override fun onListenerConnected() {
         super.onListenerConnected()
+        instance = this  // 정적 인스턴스 설정
         serverRequestQueue = ServerRequestQueue(this)
         remoteInputHijacker = RemoteInputHijacker(this)
         allowlistManager = AllowlistManager.getInstance(this)
-        Log.i(TAG, "NotificationListener connected")
+        chatContextManager = ChatContextManager(this)
+        Log.i(TAG, "NotificationListener connected with ChatContextManager")
     }
+    
     
     /**
      * 중복 메시지 확인 및 캐시 업데이트
@@ -240,6 +250,16 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         is GroupMessage -> {
                             Log.d(TAG, "Group message: ${notif.groupName} - ${notif.sender}")
                             
+                            // 채팅방 컨텍스트 추출 및 저장 (모든 그룹 메시지에 대해)
+                            if (::chatContextManager.isInitialized) {
+                                chatContextManager.extractChatContextFromKakaoNotification(sbn, notif)
+                            }
+                            
+                            // 최신 StatusBarNotification 저장 (답장 기능용)
+                            val groupChatId = ChatContext.generateChatId(ChatContext.ChatType.GROUP, notif.groupName)
+                            NotificationStorage.storeNotification(groupChatId, sbn)
+                            
+                            
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
                                 allowlistManager.isTurboModeEnabled() || allowlistManager.isGroupAllowed(notif.groupName)
@@ -266,6 +286,16 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         }
                         is PersonalMessage -> {
                             Log.d(TAG, "Personal message: ${notif.sender}")
+                            
+                            // 채팅방 컨텍스트 추출 및 저장 (모든 개인 메시지에 대해)
+                            if (::chatContextManager.isInitialized) {
+                                chatContextManager.extractChatContextFromKakaoNotification(sbn, notif)
+                            }
+                            
+                            // 최신 StatusBarNotification 저장 (답장 기능용)
+                            val personalChatId = ChatContext.generateChatId(ChatContext.ChatType.PERSONAL, notif.sender)
+                            NotificationStorage.storeNotification(personalChatId, sbn)
+                            
                             
                             // Check Turbo mode or allowlist before sending to server
                             val shouldProcess = if (::allowlistManager.isInitialized) {
@@ -307,6 +337,7 @@ class KakaoNotificationListenerService : NotificationListenerService() {
     
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        instance = null  // 정적 인스턴스 해제
         if (::serverRequestQueue.isInitialized) {
             serverRequestQueue.shutdown()
         }
