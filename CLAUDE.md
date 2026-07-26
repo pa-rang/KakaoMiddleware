@@ -59,6 +59,8 @@ This whole mechanism depends on KakaoTalk's notification structure. A KakaoTalk 
 
 `AlarmReceiver` uses `AlarmManager` to fire on 10-minute boundaries (`:00 :10 :20 :30 :40 :50`), calls `CronApiService`, and injects each returned message via `ReplyManager`. It reschedules itself on every fire — a missed alarm ends the chain, so failures must not escape the receiver.
 
+The poll contains both recurring scheduled messages and one-shot outbound messages. `CronApiService` distinguishes them with `messageSource`; after each outbound injection, the app posts the `scheduledMessageId`, `deliveryAttempt`, and boolean result to `/api/v1/outbound-messages/ack`. Scheduled messages do not send ACKs.
+
 `USE_EXACT_ALARM` is declared, but OEM battery optimization still delays alarms in practice. The Alarm tab exposes status and a manual trigger for testing this.
 
 ## Server configuration

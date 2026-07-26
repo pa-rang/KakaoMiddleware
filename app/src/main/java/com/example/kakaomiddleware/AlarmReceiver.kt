@@ -188,7 +188,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 
                 result.fold(
                     onSuccess = { cronResponse ->
-                        handleCronResponse(context, cronResponse)
+                        handleCronResponse(context, cronService, cronResponse)
                     },
                     onFailure = { exception ->
                         Log.w(TAG, "⚠️ 크론 작업 실패 - 다음 주기에 재시도: ${exception.message}")
@@ -205,7 +205,11 @@ class AlarmReceiver : BroadcastReceiver() {
     /**
      * 크론 응답 처리 및 메시지 전송
      */
-    private suspend fun handleCronResponse(context: Context, cronResponse: CronResponse) {
+    private suspend fun handleCronResponse(
+        context: Context,
+        cronService: CronApiService,
+        cronResponse: CronResponse
+    ) {
         if (!cronResponse.success) {
             Log.w(TAG, "⚠️ 크론 작업 서버 오류: ${cronResponse.error}")
             return
@@ -224,24 +228,45 @@ class AlarmReceiver : BroadcastReceiver() {
         var failCount = 0
         
         messages.forEach { cronMessage ->
-            try {
-                val success = replyManager.sendMessageToChat(
+            var deliveryError: String? = null
+            val success = try {
+                val sent = replyManager.sendMessageToChat(
                     chatId = cronMessage.chatId,
                     message = cronMessage.message
                 )
-                
-                if (success) {
-                    successCount++
-                    Log.i(TAG, "✅ 크론 메시지 전송 성공: ${cronMessage.chatId}")
-                    Log.d(TAG, "   메시지: '${cronMessage.message.take(50)}${if (cronMessage.message.length > 50) "..." else ""}'")
-                } else {
-                    failCount++
-                    Log.w(TAG, "❌ 크론 메시지 전송 실패: ${cronMessage.chatId}")
+
+                if (!sent) {
+                    deliveryError = "KakaoTalk 알림을 찾지 못했거나 RemoteInput 전송에 실패했습니다"
                 }
-                
+                sent
             } catch (e: Exception) {
+                deliveryError = "메시지 전송 예외: ${e.message ?: e.javaClass.simpleName}"
+                false
+            }
+
+            if (success) {
+                successCount++
+                Log.i(TAG, "✅ 크론 메시지 전송 성공: ${cronMessage.chatId}")
+                Log.d(TAG, "   메시지: '${cronMessage.message.take(50)}${if (cronMessage.message.length > 50) "..." else ""}'")
+            } else {
                 failCount++
-                Log.e(TAG, "💥 크론 메시지 전송 오류: ${cronMessage.chatId} - ${e.message}")
+                Log.w(TAG, "❌ 크론 메시지 전송 실패: ${cronMessage.chatId} - $deliveryError")
+            }
+
+            if (cronMessage.requiresDeliveryAck) {
+                val ackResult = cronService.acknowledgeDelivery(
+                    cronMessage = cronMessage,
+                    ok = success,
+                    error = deliveryError
+                )
+
+                ackResult.onFailure { error ->
+                    Log.e(
+                        TAG,
+                        "⚠️ 외부 발송 ACK 실패: id=${cronMessage.scheduledMessageId}, " +
+                            "attempt=${cronMessage.deliveryAttempt} - ${error.message}"
+                    )
+                }
             }
         }
         

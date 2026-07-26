@@ -10,7 +10,18 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+
+enum class CronMessageSource {
+    SCHEDULED,
+    OUTBOUND;
+
+    companion object {
+        fun fromApiValue(value: String): CronMessageSource =
+            if (value == "outbound") OUTBOUND else SCHEDULED
+    }
+}
 
 /**
  * 크론 메시지 데이터 클래스
@@ -18,8 +29,16 @@ import java.util.concurrent.TimeUnit
 data class CronMessage(
     val chatId: String,
     val message: String,
-    val messageType: String = "text"
-)
+    val messageType: String = "text",
+    val scheduledMessageId: String? = null,
+    val messageSource: CronMessageSource = CronMessageSource.SCHEDULED,
+    val deliveryAttempt: Int? = null
+) {
+    val requiresDeliveryAck: Boolean
+        get() = messageSource == CronMessageSource.OUTBOUND &&
+            !scheduledMessageId.isNullOrBlank() &&
+            deliveryAttempt != null
+}
 
 /**
  * 크론 API 응답 데이터 클래스
@@ -40,8 +59,10 @@ class CronApiService(private val context: Context) {
     companion object {
         private const val TAG = "CronApiService"
         private const val CRON_ENDPOINT = "/api/v1/run-scheduled-message"
+        private const val ACK_ENDPOINT = "/api/v1/outbound-messages/ack"
         private const val DEVICE_ID = "android_kakaomiddleware"
         private const val REQUEST_TIMEOUT_MS = 180_000L // 180초 (3분)
+        private const val ACK_TIMEOUT_MS = 15_000L
 
         // Fallback endpoint from BuildConfig
         private val FALLBACK_BASE_URL = BuildConfig.API_ENDPOINT.removeSuffix("/api/v1/process-message")
@@ -68,6 +89,10 @@ class CronApiService(private val context: Context) {
      */
     private fun getCronApiUrl(): String {
         return "${getBaseUrl()}$CRON_ENDPOINT"
+    }
+
+    private fun getAckApiUrl(): String {
+        return "${getBaseUrl()}$ACK_ENDPOINT"
     }
     
     init {
@@ -159,6 +184,68 @@ class CronApiService(private val context: Context) {
             .addApiKeyHeader()
             .build()
     }
+
+    /**
+     * 외부 발송 메시지의 실제 카카오톡 주입 결과를 서버에 보고한다.
+     *
+     * 예약 메시지는 기존 동작을 유지하며 ACK를 보내지 않는다. 실패한 ACK
+     * 요청은 서버의 dispatch lease가 만료된 뒤 다음 폴링에서 재시도된다.
+     */
+    suspend fun acknowledgeDelivery(
+        cronMessage: CronMessage,
+        ok: Boolean,
+        error: String? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val messageId = cronMessage.scheduledMessageId
+        val attemptCount = cronMessage.deliveryAttempt
+        if (!cronMessage.requiresDeliveryAck || messageId == null || attemptCount == null) {
+            return@withContext Result.failure(
+                IllegalArgumentException("외부 발송 ACK에 필요한 메시지 ID 또는 시도 번호가 없습니다")
+            )
+        }
+
+        return@withContext try {
+            withTimeout(ACK_TIMEOUT_MS) {
+                val payload = JSONObject()
+                    .put("id", messageId)
+                    .put("attemptCount", attemptCount)
+                    .put("ok", ok)
+
+                error?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                    payload.put("error", it.take(1000))
+                }
+
+                val request = Request.Builder()
+                    .url(getAckApiUrl())
+                    .post(
+                        payload.toString()
+                            .toRequestBody("application/json; charset=utf-8".toMediaType())
+                    )
+                    .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
+                    .addHeader("Accept", "application/json")
+                    .addHeader("X-Device-Id", DEVICE_ID)
+                    .addApiKeyHeader()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string()
+                    if (response.isSuccessful) {
+                        Log.i(
+                            TAG,
+                            "✅ 외부 발송 ACK 완료: id=$messageId, attempt=$attemptCount, ok=$ok"
+                        )
+                        Result.success(Unit)
+                    } else {
+                        Result.failure(
+                            IOException("ACK 서버 오류: ${response.code} - $responseBody")
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     
     /**
      * 크론 API 응답 파싱
@@ -203,13 +290,39 @@ class CronApiService(private val context: Context) {
         for (i in 0 until messagesArray.length()) {
             try {
                 val messageObj = messagesArray.getJSONObject(i)
+                val messageSource = CronMessageSource.fromApiValue(
+                    messageObj.optString("messageSource", "scheduled")
+                )
+                val scheduledMessageId = messageObj
+                    .optString("scheduledMessageId")
+                    .takeIf { it.isNotBlank() }
+                val deliveryAttempt = if (
+                    messageObj.has("deliveryAttempt") &&
+                    !messageObj.isNull("deliveryAttempt")
+                ) {
+                    messageObj.optInt("deliveryAttempt").takeIf { it > 0 }
+                } else {
+                    null
+                }
+
+                if (
+                    messageSource == CronMessageSource.OUTBOUND &&
+                    (scheduledMessageId == null || deliveryAttempt == null)
+                ) {
+                    throw IllegalArgumentException(
+                        "외부 발송 메시지에 ID 또는 deliveryAttempt가 없습니다"
+                    )
+                }
                 
                 // 서버 응답 스키마에 맞게 필드명 수정
                 // chatRoomName -> chatId, messageContent -> message로 매핑
                 val cronMessage = CronMessage(
                     chatId = messageObj.getString("chatRoomName"),  // chatRoomName을 chatId로 매핑
                     message = messageObj.getString("messageContent"),  // messageContent를 message로 매핑
-                    messageType = messageObj.optString("messageType", "text")
+                    messageType = messageObj.optString("messageType", "text"),
+                    scheduledMessageId = scheduledMessageId,
+                    messageSource = messageSource,
+                    deliveryAttempt = deliveryAttempt
                 )
                 messages.add(cronMessage)
                 
