@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Android app that intercepts KakaoTalk notifications and posts AI replies back into the conversation by hijacking the notification's `RemoteInput`. The server that generates those replies lives in a sibling repository; the **cross-repo API contracts are documented in the parent directory's `CLAUDE.md`** and are not repeated here.
 
-**This app makes no decisions.** It has no API keys, no trigger detection, and no model. It forwards messages and injects whatever the server returns. Any request to "make the bot smarter" belongs in the server repo.
+**This app makes no decisions.** It has no model, no trigger detection, and no provider credentials — the one key it carries authenticates it to our own server and unlocks nothing else. It forwards messages and injects whatever the server returns. Any request to "make the bot smarter" belongs in the server repo.
 
 ## Commands
 
@@ -64,6 +64,14 @@ This whole mechanism depends on KakaoTalk's notification structure. A KakaoTalk 
 ## Server configuration
 
 `ServerConfigManager` (SharedPreferences + `StateFlow`) overrides the endpoint at runtime; `BuildConfig.API_ENDPOINT` is only the fallback. To point a debug build at a local server, set the URL in the **Settings** tab — cleartext HTTP to localhost, `10.0.2.2`, and all private IP ranges is already permitted by `res/xml/network_security_config.xml`.
+
+### The server API key
+
+Every request adds `Authorization: Bearer <key>` through `Request.Builder.addApiKeyHeader()`. The key comes from `SERVER_API_KEY` in `local.properties` — gitignored, so it stays out of commits — and reaches the code as `BuildConfig.API_KEY`.
+
+A build without the property compiles fine and sends no header at all, which the server accepts only while its `AUTH_ENFORCE` is off. **A clone with no `local.properties` entry therefore builds an app that will stop working the moment enforcement is turned on**, and the failure looks like a 401 on every request, not a build error.
+
+The endpoint override and the key are independent: pointing a debug build at a local server still sends the production key, so that server needs the same secret listed in its `API_KEYS` or it will reject the app.
 
 ## UI
 

@@ -1,8 +1,21 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
+
+// The server API key is read from local.properties, which is gitignored, so the
+// secret never lands in a commit. An absent key builds to an empty string: the
+// app then sends no Authorization header, which the server still accepts while
+// AUTH_ENFORCE is off. Once enforcement is on, a keyless build stops working.
+val serverApiKey: String = Properties().apply {
+    val propertiesFile = rootProject.file("local.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use { load(it) }
+    }
+}.getProperty("SERVER_API_KEY").orEmpty().trim()
 
 android {
     namespace = "com.example.kakaomiddleware"
@@ -21,6 +34,8 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "API_KEY", "\"$serverApiKey\"")
     }
 
     buildTypes {

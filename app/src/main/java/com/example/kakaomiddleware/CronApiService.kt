@@ -41,16 +41,16 @@ class CronApiService(private val context: Context) {
         private const val TAG = "CronApiService"
         private const val CRON_ENDPOINT = "/api/v1/run-scheduled-message"
         private const val DEVICE_ID = "android_kakaomiddleware"
-        private const val REQUEST_TIMEOUT_MS = 30_000L // 30초
-        
+        private const val REQUEST_TIMEOUT_MS = 180_000L // 180초 (3분)
+
         // Fallback endpoint from BuildConfig
         private val FALLBACK_BASE_URL = BuildConfig.API_ENDPOINT.removeSuffix("/api/v1/process-message")
     }
-    
+
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
     
     private val serverConfigManager = ServerConfigManager.getInstance(context)
@@ -156,6 +156,7 @@ class CronApiService(private val context: Context) {
             .addHeader("Accept", "application/json")
             .addHeader("X-Device-Id", DEVICE_ID)
             .addHeader("X-Scheduled-Time", scheduledTime ?: "")
+            .addApiKeyHeader()
             .build()
     }
     

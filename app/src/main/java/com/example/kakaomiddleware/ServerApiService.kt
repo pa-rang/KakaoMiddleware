@@ -178,9 +178,10 @@ class ServerApiService(private val context: Context? = null) {
             .post(requestBody)
             .addHeader("Content-Type", "application/json")
             .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
+            .addApiKeyHeader()
             .build()
     }
-    
+
     private fun createMultipartRequest(messageData: MessageData): Request {
         val jsonPayload = createJsonPayload(messageData).toString()
 
@@ -208,9 +209,10 @@ class ServerApiService(private val context: Context? = null) {
             .url(getApiEndpoint())
             .post(requestBody)
             .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
+            .addApiKeyHeader()
             .build()
     }
-    
+
     private fun createJsonPayload(messageData: MessageData): JSONObject {
         return JSONObject().apply {
             put("id", messageData.id)
