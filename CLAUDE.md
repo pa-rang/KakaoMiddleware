@@ -73,6 +73,8 @@ A build without the property compiles fine and sends no header at all, which the
 
 The endpoint override and the key are independent: pointing a debug build at a local server still sends the production key, so that server needs the same secret listed in its `API_KEYS` or it will reject the app.
 
+**This build has not been installed on the device yet**, so the server still runs with enforcement off. The install-then-enforce sequence — and what breaks if you reverse it — is written up in the server repo at `docs/REMAINING_WORK.md`.
+
 ## UI
 
 `MainActivity.kt` is a single large Compose file with five tabs: **Messages** (live log), **Allowlist** (contacts, groups, Turbo Mode), **Chat** (browse stored chats, send manual messages), **Settings** (server config), **Alarm** (schedule status and test).
