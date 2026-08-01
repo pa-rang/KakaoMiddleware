@@ -157,8 +157,15 @@ class AlarmReceiver : BroadcastReceiver() {
         Log.d(TAG, "⏰ 10분 간격 알람 로그: $formattedTime (지연: $delay)")
         
         // 2. 크론 작업 실행 (새로운 기능)
+        // BroadcastReceiver.onReceive()가 반환된 뒤에도 프로세스가 유지되도록
+        // 비동기 작업의 생명주기를 PendingResult에 연결한다.
+        val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
-            executeCronJob(context)
+            try {
+                executeCronJob(context.applicationContext)
+            } finally {
+                pendingResult.finish()
+            }
         }
         
         // 3. 다음 알람 스케줄링 (유지)
