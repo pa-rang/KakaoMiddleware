@@ -20,7 +20,7 @@
 ## 설치 및 사용법
 1. 안드로이드 스튜디오에서 프로젝트 열기
 2. 빌드 및 실행
-3. Firebase Console에서 받은 `google-services.json`을 `app/`에 배치
+3. Firebase Console에서 받은 `google-services.json`을 build type별 `app/src/debug/`와 `app/src/release/`에 배치
 4. `local.properties`에 `SERVER_API_KEY=<server env key>` 설정
 5. 알림 접근 권한(필수) 및 앱 상태 알림 권한(선택) 설정
 6. 카카오톡 메시지가 자동으로 처리됩니다.
