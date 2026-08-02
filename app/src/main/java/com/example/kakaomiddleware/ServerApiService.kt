@@ -40,8 +40,6 @@ class ServerApiService(private val context: Context? = null) {
     
     companion object {
         private const val TAG = "ServerApiService"
-        private const val DEVICE_ID = "android_kakaomiddleware"
-        
         // Fallback to BuildConfig if ServerConfigManager is not available
         // BuildConfig now always contains production server endpoint
         private val FALLBACK_API_ENDPOINT = BuildConfig.API_ENDPOINT
@@ -72,7 +70,7 @@ class ServerApiService(private val context: Context? = null) {
         
         Log.i(TAG, "🌐 SERVER ENDPOINT: $apiEndpoint")
         Log.i(TAG, "🏷️ SERVER TYPE: $serverType")
-        Log.i(TAG, "📱 DEVICE ID: $DEVICE_ID")
+        Log.i(TAG, "📱 DEVICE ID: ${DeviceIdentity.DEVICE_ID}")
         Log.i(TAG, "⚙️ CONFIG SOURCE: $configSource")
         if (BuildConfig.DEBUG && serverConfigManager != null) {
             Log.i(TAG, "🔧 DEBUG MODE: Using Settings-configured server address")
@@ -95,7 +93,7 @@ class ServerApiService(private val context: Context? = null) {
                 sender = sender,
                 message = message,
                 timestamp = timestamp,
-                deviceId = DEVICE_ID
+                deviceId = DeviceIdentity.DEVICE_ID
             )
             
             val response = sendToServer(messageData)
@@ -126,7 +124,7 @@ class ServerApiService(private val context: Context? = null) {
                 sender = sender,
                 message = message,
                 timestamp = timestamp,
-                deviceId = DEVICE_ID,
+                deviceId = DeviceIdentity.DEVICE_ID,
                 imageBitmap = imageBitmap
             )
             

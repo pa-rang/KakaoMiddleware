@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
         
         // 앱 시작 시 알람 자동 시작
         initializeAlarm()
+        PushRegistrationManager.initialize(this)
         
         setContent {
             KakaoMiddlewareTheme {
@@ -66,6 +67,16 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+            }
+        }
+
+        if (DispatchNotificationManager.shouldRequestPermission(this)) {
+            DispatchNotificationManager.markPermissionAsked(this)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    7102
+                )
             }
         }
     }

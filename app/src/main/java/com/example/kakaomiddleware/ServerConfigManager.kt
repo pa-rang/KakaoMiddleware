@@ -166,6 +166,10 @@ class ServerConfigManager private constructor(private val context: Context) {
         Log.i(TAG, "   ✅ SharedPreferences and StateFlow updated immediately")
         Log.i(TAG, "   🔍 New StateFlow URL: ${_customServerUrl.value}")
         Log.i(TAG, "   🔍 New StateFlow endpoint: ${_currentEndpoint.value}")
+
+        if (oldValue != cleanUrl && getUseCustomServer()) {
+            PushRegistrationManager.reregisterKnownInstallation(context)
+        }
     }
     
     /**
@@ -190,6 +194,7 @@ class ServerConfigManager private constructor(private val context: Context) {
             Log.i(TAG, "   ✅ SharedPreferences and StateFlow updated immediately")
             Log.i(TAG, "   🔍 New StateFlow useCustom: ${_useCustomServer.value}")
             Log.i(TAG, "   🔍 New StateFlow endpoint: ${_currentEndpoint.value}")
+            PushRegistrationManager.reregisterKnownInstallation(context)
         } else {
             Log.i(TAG, "   ⚠️ No change needed (same value)")
         }

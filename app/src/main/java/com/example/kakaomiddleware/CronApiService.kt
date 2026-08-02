@@ -60,7 +60,6 @@ class CronApiService(private val context: Context) {
         private const val TAG = "CronApiService"
         private const val CRON_ENDPOINT = "/api/v1/run-scheduled-message"
         private const val ACK_ENDPOINT = "/api/v1/outbound-messages/ack"
-        private const val DEVICE_ID = "android_kakaomiddleware"
         private const val REQUEST_TIMEOUT_MS = 180_000L // 180초 (3분)
         private const val ACK_TIMEOUT_MS = 15_000L
 
@@ -106,7 +105,7 @@ class CronApiService(private val context: Context) {
         Log.i(TAG, "🕐 CronApiService 초기화됨")
         Log.i(TAG, "🌐 크론 엔드포인트: $cronUrl")
         Log.i(TAG, "🏷️ 서버 타입: $serverType")
-        Log.i(TAG, "📱 디바이스 ID: $DEVICE_ID")
+        Log.i(TAG, "📱 디바이스 ID: ${DeviceIdentity.DEVICE_ID}")
     }
     
     /**
@@ -179,7 +178,7 @@ class CronApiService(private val context: Context) {
             .get()
             .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
             .addHeader("Accept", "application/json")
-            .addHeader("X-Device-Id", DEVICE_ID)
+            .addHeader("X-Device-Id", DeviceIdentity.DEVICE_ID)
             .addHeader("X-Scheduled-Time", scheduledTime ?: "")
             .addApiKeyHeader()
             .build()
@@ -223,7 +222,7 @@ class CronApiService(private val context: Context) {
                     )
                     .addHeader("User-Agent", "KakaoMiddleware-Android/1.0")
                     .addHeader("Accept", "application/json")
-                    .addHeader("X-Device-Id", DEVICE_ID)
+                    .addHeader("X-Device-Id", DeviceIdentity.DEVICE_ID)
                     .addApiKeyHeader()
                     .build()
 

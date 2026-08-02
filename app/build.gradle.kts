@@ -6,6 +6,18 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Firebase project configuration is environment-owned. Keeping the plugin
+// conditional lets a fresh clone run unit tests before its debug/release
+// google-services.json files have been provisioned.
+val hasGoogleServicesConfig = listOf(
+    file("google-services.json"),
+    file("src/debug/google-services.json"),
+    file("src/release/google-services.json")
+).any { it.exists() }
+if (hasGoogleServicesConfig) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 // The server API key is read from local.properties, which is gitignored, so the
 // secret never lands in a commit. An absent key builds to an empty string: the
 // app then sends no Authorization header, which the server still accepts while
@@ -73,6 +85,9 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
     
     // Network dependencies
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
