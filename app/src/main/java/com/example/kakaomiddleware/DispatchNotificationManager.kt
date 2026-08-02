@@ -9,12 +9,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.work.ForegroundInfo
 
 /** A single quiet status notification for FCM wake and drain results. */
 class DispatchNotificationManager private constructor(private val context: Context) {
     companion object {
         private const val CHANNEL_ID = "outbound_dispatch"
-        private const val NOTIFICATION_ID = 7102
+        private const val STATUS_NOTIFICATION_ID = 7102
+        private const val FOREGROUND_NOTIFICATION_ID = 7103
         private const val PREF_NAME = "dispatch_notification"
         private const val KEY_PERMISSION_ASKED = "permission_asked"
 
@@ -86,9 +88,32 @@ class DispatchNotificationManager private constructor(private val context: Conte
         )
     }
 
+    /** Required by expedited WorkManager jobs on Android versions before 12. */
+    fun foregroundInfo(): ForegroundInfo = ForegroundInfo(
+        FOREGROUND_NOTIFICATION_ID,
+        buildNotification(
+            title = "KakaoTalk delivery in progress",
+            text = "Checking the outbound queue…",
+            ongoing = true,
+            timeoutMs = null
+        )
+    )
+
     private fun show(title: String, text: String, timeoutMs: Long, ongoing: Boolean) {
         if (!canNotify()) return
 
+        notificationManager.notify(
+            STATUS_NOTIFICATION_ID,
+            buildNotification(title, text, ongoing, timeoutMs)
+        )
+    }
+
+    private fun buildNotification(
+        title: String,
+        text: String,
+        ongoing: Boolean,
+        timeoutMs: Long?
+    ): Notification {
         val pendingIntent = PendingIntent.getActivity(
             context,
             0,
@@ -110,10 +135,10 @@ class DispatchNotificationManager private constructor(private val context: Conte
             .setOnlyAlertOnce(true)
             .setOngoing(ongoing)
             .setAutoCancel(!ongoing)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && timeoutMs != null) {
             builder.setTimeoutAfter(timeoutMs)
         }
-        notificationManager.notify(NOTIFICATION_ID, builder.build())
+        return builder.build()
     }
 
     private fun canNotify(): Boolean =
