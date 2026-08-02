@@ -14,5 +14,10 @@
 .cxx
 local.properties
 
+# Firebase project configuration (provisioned per environment)
+app/google-services.json
+app/src/debug/google-services.json
+app/src/release/google-services.json
+
 # Kotlin compiler diagnostics
 .kotlin

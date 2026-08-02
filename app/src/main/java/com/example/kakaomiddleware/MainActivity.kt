@@ -843,7 +843,7 @@ fun AlarmTestScreen(
         )
         
         Text(
-            text = "10분 간격 알람 테스트 (00분, 10분, 20분, 30분, 40분, 50분)",
+            text = "FCM 유실을 복구하는 10분 간격 큐 drain fallback",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 24.dp)
@@ -889,7 +889,7 @@ fun AlarmTestScreen(
                     }
                     Text(
                         text = if (isAlarmActive) {
-                            "활성화됨 - 10분마다 로그가 출력됩니다"
+                            "활성화됨 - 10분마다 대기 큐를 복구합니다"
                         } else {
                             "비활성화됨"
                         },
@@ -918,7 +918,7 @@ fun AlarmTestScreen(
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Start 10-Minute Alarm")
+            Text("Start 10-Minute Fallback")
         }
         
         // 알람 정지 버튼
@@ -1037,8 +1037,8 @@ fun AlarmTestScreen(
                 )
                 
                 Text(
-                    text = "1. 'Start 10-Minute Alarm' 버튼을 눌러 알람을 시작합니다.\n" +
-                          "2. 매시 00, 10, 20, 30, 40, 50분에 정확히 로그가 출력됩니다.\n" +
+                    text = "1. 주 트리거는 FCM이며, 이 알람은 push 유실 복구용입니다.\n" +
+                          "2. 매시 00, 10, 20, 30, 40, 50분에 공통 WorkManager drain을 시작합니다.\n" +
                           "3. Android Studio의 Logcat에서 'AlarmReceiver' 태그로 확인할 수 있습니다.\n" +
                           "   - adb logcat -s AlarmReceiver\n" +
                           "4. 앱이 종료되어도 알람은 백그라운드에서 계속 작동합니다.\n" +

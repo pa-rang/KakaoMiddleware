@@ -51,17 +51,30 @@ allowlistManager.isTurboModeEnabled() || allowlistManager.isPersonalAllowed(send
 
 Finding *which* notification to hijack is the fragile part, so `ReplyManager` resolves it in two steps: the `NotificationStorage` memory cache first, then `ActiveNotificationFinder` over `getActiveNotifications()`, caching whatever it finds. `ChatRepository` (SharedPreferences) persists chat metadata across restarts, but a `StatusBarNotification` itself cannot be persisted — **after a reboot, a chat cannot be replied to until it produces a new notification.**
 
-Chat IDs are `ChatContext.generateChatId`: `personal_<name>` or `group_<name>`. This string is the join key against the server's scheduled-message payload, so the two must stay identical.
+Chat IDs are `ChatContext.generateChatId`: `personal_<name>` or `group_<name>`. This string is the join key against the server's outbound claim payload, so the two must stay identical.
 
 This whole mechanism depends on KakaoTalk's notification structure. A KakaoTalk update can break it without any change on our side; `canHijackNotification` and `getHijackingDebugInfo` exist to diagnose that.
 
-## Scheduled messages
+## Outbound and scheduled messages
 
-`AlarmReceiver` uses `AlarmManager` to fire on 10-minute boundaries (`:00 :10 :20 :30 :40 :50`), calls `CronApiService`, and injects each returned message via `ReplyManager`. It reschedules itself on every fire — a missed alarm ends the chain, so failures must not escape the receiver.
+FCM is the primary trigger and carries no message body. `PushRegistrationManager` opts into Firebase installation-ID mode; `KakaoFirebaseMessagingService.onRegistered()` uploads the FID through `PushRegistrationWorker`. A supported `outbound_available` data payload enqueues an expedited `OutboundDrainWorker`.
 
-The poll contains both recurring scheduled messages and one-shot outbound messages. `CronApiService` distinguishes them with `messageSource`; after each outbound injection, the app posts the `scheduledMessageId`, `deliveryAttempt`, and boolean result to `/api/v1/outbound-messages/ack`. Scheduled messages do not send ACKs.
+The Worker is the only modern delivery implementation:
 
-`USE_EXACT_ALARM` is declared, but OEM battery optimization still delays alarms in practice. The Alarm tab exposes status and a manual trigger for testing this.
+1. claim device-scoped rows from `/api/v1/device/outbound-messages/claim`,
+2. inject each through `ReplyManager`,
+3. persist its id in `DeliveryJournal` immediately after injection,
+4. ACK the matching `attemptCount`, then remove the journal entry.
+
+The journal holds at most 200 entries for 48 hours. If ACK was lost, a later claim sees the id and repairs ACK without injecting again. HTTP/network failures retry; 401/403-class configuration failures stop rather than loop forever.
+
+`AlarmReceiver` remains a ten-minute FCM-loss fallback, but it only enqueues the same non-expedited Worker and schedules its successor. It performs no HTTP, KakaoTalk injection, or ACK itself. `AlarmRescheduleReceiver` restores the chain on `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED`. Exact-alarm permission or OEM delay affects only this fallback, not FCM.
+
+`CronApiService` and its legacy payload model remain temporarily so an older APK can talk to the server compatibility route; new runtime code does not call them.
+
+### Firebase project file
+
+`google-services.json` is environment-owned and gitignored. The Google Services plugin is applied only when `app/google-services.json`, `app/src/debug/google-services.json`, or `app/src/release/google-services.json` exists, so a fresh clone can still run tests. A build without one starts normally but logs that FCM is unavailable. Because debug has an `.debug` application-id suffix, its Firebase Android app registration must match that package if debug push testing is required.
 
 ## Server configuration
 
@@ -71,11 +84,11 @@ The poll contains both recurring scheduled messages and one-shot outbound messag
 
 Every request adds `Authorization: Bearer <key>` through `Request.Builder.addApiKeyHeader()`. The key comes from `SERVER_API_KEY` in `local.properties` — gitignored, so it stays out of commits — and reaches the code as `BuildConfig.API_KEY`.
 
-A build without the property compiles fine and sends no header at all, which the server accepts only while its `AUTH_ENFORCE` is off. **A clone with no `local.properties` entry therefore builds an app that will stop working the moment enforcement is turned on**, and the failure looks like a 401 on every request, not a build error.
+A build without the property compiles fine and sends no header at all. The inbound and legacy compatibility routes may accept that only while `AUTH_ENFORCE` is off; push registration, device claim, and ACK always reject it. **A clone with no `local.properties` entry therefore cannot use FCM delivery**, and the failure appears as a permanent worker authentication error rather than a build error.
 
 The endpoint override and the key are independent: pointing a debug build at a local server still sends the production key, so that server needs the same secret listed in its `API_KEYS` or it will reject the app.
 
-**This build has not been installed on the device yet**, so the server still runs with enforcement off. The install-then-enforce sequence — and what breaks if you reverse it — is written up in the server repo at `docs/REMAINING_WORK.md`.
+The install-then-enforce and FCM rollout sequence — and what breaks if you reverse it — is written up in the server repo at `docs/REMAINING_WORK.md`.
 
 ## UI
 
@@ -87,7 +100,8 @@ Logcat tags, in pipeline order:
 
 ```
 KakaoNotificationListener → AllowlistManager → ServerRequestQueue → ServerApiService
-AlarmReceiver → CronApiService → ReplyManager
+KakaoFirebaseService → OutboundDrainWorker → DeviceApiService → ReplyManager
+AlarmReceiver → OutboundDrainWorker  (fallback)
 ```
 
 `ServerApiService` logs the resolved endpoint and labels it `🏠 LOCAL SERVER` or `☁️ PRODUCTION SERVER` on every request — check this first when responses are not what you expect.
@@ -97,7 +111,8 @@ AlarmReceiver → CronApiService → ReplyManager
 | No notifications captured | Notification access not granted, or revoked by reinstall |
 | Messages captured but no server request | Sender/group not allowlisted and Turbo Mode off |
 | Server returns a reply but nothing appears | No cached notification for that chat (e.g. since reboot), or KakaoTalk changed its notification layout |
-| Scheduled messages never arrive | Alarm chain broken, or `chatRoomName` from the server does not match a local chat ID |
+| Outbound messages never arrive | FID not registered / FCM disabled, API key rejected, or `chatRoomName` does not match a local chat ID |
+| FCM log appears but no delivery | WorkManager/network constraint, no active KakaoTalk notification, or server claim returned empty |
 
 ## Note on naming
 
