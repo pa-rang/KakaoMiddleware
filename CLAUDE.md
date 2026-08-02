@@ -76,6 +76,8 @@ The journal holds at most 200 entries for 48 hours. If ACK was lost, a later cla
 
 `google-services.json` is environment-owned and gitignored. The Google Services plugin is applied only when `app/google-services.json`, `app/src/debug/google-services.json`, or `app/src/release/google-services.json` exists, so a fresh clone can still run tests. A build without one starts normally but logs that FCM is unavailable. Because debug has an `.debug` application-id suffix, its Firebase Android app registration must match that package if debug push testing is required.
 
+The provisioned Firebase project is `kakao-gpt-coby-20260802`. It contains Android registrations for both `com.example.kakaomiddleware` and `com.example.kakaomiddleware.debug`; the environment-owned debug/release config files each contain both clients and the Google Services plugin selects the matching package at build time.
+
 ## Server configuration
 
 `ServerConfigManager` (SharedPreferences + `StateFlow`) overrides the endpoint at runtime; `BuildConfig.API_ENDPOINT` is only the fallback. To point a debug build at a local server, set the URL in the **Settings** tab — cleartext HTTP to localhost, `10.0.2.2`, and all private IP ranges is already permitted by `res/xml/network_security_config.xml`.
