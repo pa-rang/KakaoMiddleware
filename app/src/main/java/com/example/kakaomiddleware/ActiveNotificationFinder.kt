@@ -46,13 +46,16 @@ object ActiveNotificationFinder {
             kakaoNotifications.forEach { sbn ->
                 val notification = sbn.notification
                 val extras = notification.extras
-                
-                val title = extras?.getString("android.title") ?: ""
-                val subText = extras?.getString("android.subText") ?: ""
+
+                val title = extras?.getCharSequence("android.title")?.toString() ?: ""
                 val isGroup = extras?.getBoolean("android.isGroupConversation", false) ?: false
-                
-                // 채팅방 이름 매칭
-                val notificationChatName = if (isGroup) subText else title
+
+                // 채팅방 이름 매칭. 그룹명은 캡처 경로와 반드시 같은 해석기를 타야
+                // 한다 — 캡처가 저장한 이름과 여기서 찾는 이름이 어긋나는 순간
+                // 아웃바운드 주입이 조용히 실패한다.
+                val notificationChatName =
+                    if (isGroup) KakaoRoomNameResolver.resolveGroupName(listenerService, sbn) ?: ""
+                    else title
                 
                 Log.v(TAG, "📋 Checking notification: '$notificationChatName' vs '$chatName'")
                 

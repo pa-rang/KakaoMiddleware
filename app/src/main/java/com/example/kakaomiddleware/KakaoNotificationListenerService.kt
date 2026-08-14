@@ -46,6 +46,30 @@ class KakaoNotificationListenerService : NotificationListenerService() {
         allowlistManager = AllowlistManager.getInstance(this)
         chatContextManager = ChatContextManager(this)
         Log.i(TAG, "NotificationListener connected with ChatContextManager")
+        warmUpRoomNameMap()
+    }
+
+    /**
+     * Learns room names from the notifications already sitting in the shade.
+     * Read-only: nothing is forwarded or re-processed — messages that were
+     * posted while the listener was down stay unprocessed, because replaying
+     * them would re-send every unread chat to the server with fresh ids.
+     * This only pre-populates the tag → name map so the first live message
+     * after a (re)connect can be named even if its shortcut lookup misses.
+     */
+    private fun warmUpRoomNameMap() {
+        try {
+            activeNotifications
+                ?.filter { it.packageName == KAKAOTALK_PACKAGE }
+                ?.forEach { sbn ->
+                    if (sbn.notification.extras.getBoolean("android.isGroupConversation", false)) {
+                        val name = KakaoRoomNameResolver.resolveGroupName(this, sbn)
+                        Log.i(TAG, "Room name warm-up: tag=${sbn.tag} -> ${name ?: "(unresolved)"}")
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Room name warm-up failed: ${e.message}")
+        }
     }
     
     
@@ -78,21 +102,20 @@ class KakaoNotificationListenerService : NotificationListenerService() {
             if (notification.packageName == KAKAOTALK_PACKAGE) {
                 val extras = notification.notification.extras
                 
-                val title = extras.getString("android.title", "")
-                val text = extras.getString("android.text", "")
-                val subText = extras.getString("android.subText", "")
+                // getCharSequence instead of getString: MessagingStyle apps may post
+                // SpannableStrings, for which getString silently returns the default.
+                val title = extras.getCharSequence("android.title")?.toString() ?: ""
+                val text = extras.getCharSequence("android.text")?.toString() ?: ""
+                val subText = extras.getCharSequence("android.subText")?.toString() ?: ""
                 val isGroupConversation = extras.getBoolean("android.isGroupConversation", false)
-                // KakaoTalk normally puts the room name in subText, but it drops it on
-                // some notifications; MessagingStyle's conversationTitle carries the same
-                // name and is the fallback. Only used to *name* a group, never to decide
-                // that a chat is one — a personal chat that happens to carry a title must
-                // not start being treated as a group.
-                val conversationTitle = extras.getString("android.conversationTitle", "")
-                val resolvedGroupName = when {
-                    subText.isNotEmpty() -> subText
-                    conversationTitle.isNotEmpty() -> conversationTitle
-                    else -> null
-                }
+                // The room name of a group chat. KakaoTalk 26.7.0 removed it from the
+                // notification body, so this walks subText → conversationTitle → the
+                // conversation shortcut label → a remembered tag map. Only used to
+                // *name* a group, never to decide that a chat is one — that stays
+                // isGroupConversation alone.
+                val resolvedGroupName =
+                    if (isGroupConversation) KakaoRoomNameResolver.resolveGroupName(this, notification)
+                    else null
                 
                 // Check for image messages in android.messages array
                 var imageUri: Uri? = null
@@ -134,7 +157,7 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                             // mentioned the assistant; the text branch below has always
                             // dropped this case instead.
                             if (resolvedGroupName == null) {
-                                Log.w(TAG, "Group image with no resolvable room name - dropping: $title")
+                                Log.w(TAG, "Group image with no resolvable room name - dropping (sender=$title, tag=${notification.tag})")
                                 null
                             } else {
                                 ImageMessage(
@@ -166,6 +189,15 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                             timestamp = timestamp,
                             formattedTime = formattedTime
                         )
+                    }
+                    // Same rule as the image branch: a group message whose room cannot
+                    // be named is dropped loudly, never downgraded to personal. This
+                    // was previously a silent fall-through to "Unknown notification
+                    // type ignored", which is how two days of group messages vanished
+                    // without a single suspicious log line.
+                    text.isNotEmpty() && isGroupConversation -> {
+                        Log.w(TAG, "Group text with no resolvable room name - dropping (sender=$title, tag=${notification.tag})")
+                        null
                     }
                     text.isNotEmpty() && !isGroupConversation -> {
                         PersonalMessage(
