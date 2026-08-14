@@ -29,6 +29,8 @@ Nothing works until **notification access** is granted manually in Android setti
 
 KakaoTalk posts **multiple notifications per message** (a summary plus the actual message), which is why `UnreadSummary` must be recognized and discarded rather than treated as a message.
 
+An image notification becomes an `ImageMessage`, whose `groupName` is what tells the server the chat is a group. `subText` is occasionally missing, so the room name falls back to `android.conversationTitle` — but only as a *name*, never as evidence that the chat is a group, which stays `isGroupConversation` alone. **When `isGroupConversation` is true and no name resolves, the notification is dropped rather than downgraded to a personal image.** Downgrading is how a group photo reached the server as a 1:1 message and got answered without anyone mentioning the assistant; the text branches have always dropped that case.
+
 For every message it keeps, the service:
 
 1. stores the `StatusBarNotification` in `NotificationStorage` (in-memory, keyed by chat ID) so a reply can be injected later,

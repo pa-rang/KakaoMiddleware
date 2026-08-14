@@ -82,6 +82,17 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                 val text = extras.getString("android.text", "")
                 val subText = extras.getString("android.subText", "")
                 val isGroupConversation = extras.getBoolean("android.isGroupConversation", false)
+                // KakaoTalk normally puts the room name in subText, but it drops it on
+                // some notifications; MessagingStyle's conversationTitle carries the same
+                // name and is the fallback. Only used to *name* a group, never to decide
+                // that a chat is one — a personal chat that happens to carry a title must
+                // not start being treated as a group.
+                val conversationTitle = extras.getString("android.conversationTitle", "")
+                val resolvedGroupName = when {
+                    subText.isNotEmpty() -> subText
+                    conversationTitle.isNotEmpty() -> conversationTitle
+                    else -> null
+                }
                 
                 // Check for image messages in android.messages array
                 var imageUri: Uri? = null
@@ -116,15 +127,25 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                 val notification = when {
                     // Image message (detected from android.messages array)
                     imageUri != null && imageBitmap != null -> {
-                        if (isGroupConversation && subText.isNotEmpty()) {
-                            ImageMessage(
-                                sender = title,
-                                imageUri = imageUri,
-                                imageBitmap = imageBitmap,
-                                groupName = subText,
-                                timestamp = timestamp,
-                                formattedTime = formattedTime
-                            )
+                        if (isGroupConversation) {
+                            // A group image whose room name cannot be resolved is dropped,
+                            // never downgraded to a personal image. Downgrading is what made
+                            // the server see a 1:1 chat and answer a group photo that never
+                            // mentioned the assistant; the text branch below has always
+                            // dropped this case instead.
+                            if (resolvedGroupName == null) {
+                                Log.w(TAG, "Group image with no resolvable room name - dropping: $title")
+                                null
+                            } else {
+                                ImageMessage(
+                                    sender = title,
+                                    imageUri = imageUri,
+                                    imageBitmap = imageBitmap,
+                                    groupName = resolvedGroupName,
+                                    timestamp = timestamp,
+                                    formattedTime = formattedTime
+                                )
+                            }
                         } else {
                             ImageMessage(
                                 sender = title,
@@ -137,9 +158,9 @@ class KakaoNotificationListenerService : NotificationListenerService() {
                         }
                     }
                     // Regular text messages
-                    text.isNotEmpty() && isGroupConversation && subText.isNotEmpty() -> {
+                    text.isNotEmpty() && isGroupConversation && resolvedGroupName != null -> {
                         GroupMessage(
-                            groupName = subText,
+                            groupName = resolvedGroupName,
                             sender = title,
                             message = text,
                             timestamp = timestamp,
