@@ -24,13 +24,16 @@ import android.util.Log
  *
  *  1. `android.subText` — the pre-26.7.0 location; costs nothing to keep first.
  *  2. `android.conversationTitle` — MessagingStyle's own slot for the name.
- *  3. The conversation shortcut label — where available; some frameworks
- *     (Samsung Android 11) ship without the API despite its SDK level.
+ *  3. The conversation shortcut label — **Android 12+ only**
+ *     (`Ranking.getConversationShortcutInfo` is API 31).
  *  4. A persisted `tag → name` map remembered from earlier resolutions.
  *
- * On a device where 1–3 all fail the map is the only source, and it can be
- * seeded from the host with `scripts/seed-room-name-map.sh`, which copies the
- * system's own shortcut registry (tag → room name) into these prefs over adb.
+ * On Android 11 step 3 does not exist, so the map is the only source and a room
+ * the map has never seen cannot be named at all. Seed it from the host with
+ * `scripts/seed-room-name-map.sh`, which copies the system's own shortcut
+ * registry (tag → room name) into these prefs over adb; re-run it after joining
+ * a new group room. On Android 12+ step 3 names new rooms on their first
+ * message and the seeding script becomes unnecessary.
  * The map is deliberately a *fallback*, never an override: a room rename
  * flows in through 1–3 and re-learns the entry.
  */
@@ -68,12 +71,12 @@ object KakaoRoomNameResolver {
     }
 
     /**
-     * True once this framework has proven it lacks the ranking→shortcut API, so
-     * the failed lookup happens exactly once per process instead of per message.
-     * The Samsung A50 (Android 11) throws NoSuchMethodError here even though the
-     * SDK marks the method as API 30 — which is also why the catch below must be
-     * Throwable: an Error would sail past `catch (Exception)` and take the whole
-     * listener service down with it.
+     * Set if a framework turns out to lack the ranking→shortcut API anyway, so
+     * the failed lookup costs one log line per process instead of one per
+     * message. The catch must be Throwable-wide: a missing method raises an
+     * Error, which sails past `catch (Exception)` and takes the whole listener
+     * service down — that is exactly what happened when the guard below was one
+     * API level too low.
      */
     @Volatile
     private var rankingShortcutUnsupported = false
@@ -82,7 +85,9 @@ object KakaoRoomNameResolver {
         service: NotificationListenerService,
         sbn: StatusBarNotification
     ): String? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || rankingShortcutUnsupported) return null
+        // API 31, not 30: Ranking.getConversationShortcutInfo() arrived in
+        // Android 12. Android 11 devices never take this path.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || rankingShortcutUnsupported) return null
         return try {
             val ranking = NotificationListenerService.Ranking()
             if (!service.currentRanking.getRanking(sbn.key, ranking)) {
